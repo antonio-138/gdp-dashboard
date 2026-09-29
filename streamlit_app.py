@@ -13,18 +13,40 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🏗️ Structural Beam Analyzer")
+st.title("🏗️ Structural Beam Analysis Tool")
 
-st.write(
+st.markdown(
     """
-    Analyze a simply supported beam subjected to downward
-    point loads and uniform distributed loads (UDLs).
+    **AI-Assisted Structural Analysis Project**
 
-    Enter the beam and loading information below.
-    The program calculates support reactions and generates
-    shear-force and bending-moment diagrams.
+    Analyze a simply supported beam subjected to point loads
+    and uniform distributed loads. The tool calculates support
+    reactions, shear forces, bending moments, and automatically
+    generates structural diagrams.
     """
 )
+
+st.info(
+    "Enter the beam geometry and loading conditions below, "
+    "then select ANALYZE BEAM."
+)
+
+with st.expander("Analysis Assumptions"):
+
+    st.markdown(
+        """
+        This tool assumes:
+
+        - The beam is simply supported.
+        - Support A is a pin.
+        - Support B is a roller.
+        - Loads act vertically downward.
+        - Point loads act at specified locations.
+        - Distributed loads are uniform over their specified regions.
+        - The beam is analyzed using static equilibrium.
+        - Self-weight is neglected unless entered as a distributed load.
+        """
+    )
 
 
 # ============================================================
@@ -162,11 +184,16 @@ for i in range(int(number_of_udls)):
 
 st.header("4. Structural Analysis")
 
-analyze = st.button(
+if "analyzed" not in st.session_state:
+    st.session_state.analyzed = False
+
+if st.button(
     "ANALYZE BEAM",
     type="primary"
-)
+):
+    st.session_state.analyzed = True
 
+analyze = st.session_state.analyzed
 
 if analyze:
 
@@ -720,76 +747,177 @@ if analyze:
 
 
     # ========================================================
-    # CALCULATION SUMMARY
+    # STEP-BY-STEP CALCULATIONS
     # ========================================================
 
-    st.subheader(
-        "Calculation Summary"
-    )
+    st.subheader("Step-by-Step Calculations")
 
     st.write(
-        "**Total downward load:** "
-        f"{total_load:.2f} kip"
+        "The support reactions are determined using "
+        "the static-equilibrium equations."
     )
 
-    st.write(
-        "**Total moment of applied loads about A:** "
-        f"{total_moment_about_A:.2f} kip-ft"
-    )
-
-    st.write(
-        "**Reaction equation:**"
-    )
-
-    st.latex(
-        r"R_B = "
-        r"\frac{\sum M_A}{L}"
-    )
-
-    st.write(
-        f"RB = {total_moment_about_A:.2f} "
-        f"/ {L:.2f} "
-        f"= {RB:.2f} kip"
-    )
-
-    st.latex(
-        r"R_A = "
-        r"\sum P - R_B"
-    )
-
-    st.write(
-        f"RA = {total_load:.2f} "
-        f"- {RB:.2f} "
-        f"= {RA:.2f} kip"
-    )
+    st.latex(r"\sum F_y = 0")
+    st.latex(r"\sum M_A = 0")
 
 
     # --------------------------------------------------------
-    # Show UDL equivalent loads
+    # APPLIED LOADS
     # --------------------------------------------------------
 
-    if len(udls) > 0:
+    st.markdown("### Applied Loads")
 
-        st.write(
-            "**UDL Equivalent Resultants:**"
-        )
+    if len(point_loads) > 0:
 
-        for i, (
-            W,
-            centroid,
-            loaded_length
-        ) in enumerate(
-            udl_resultants
-        ):
+        st.markdown("**Point Loads**")
+
+        for i, (P, a) in enumerate(point_loads):
 
             st.write(
-                f"UDL {i + 1}: "
-                f"{W:.2f} kip resultant "
-                f"acting at x = "
-                f"{centroid:.2f} ft"
+                f"Point Load {i + 1}: "
+                f"{P:.2f} kip at x = {a:.2f} ft"
             )
 
 
+    if len(udls) > 0:
+
+        st.markdown("**Uniform Distributed Loads**")
+
+        for i, (w, x_start, x_end) in enumerate(udls):
+
+            loaded_length = x_end - x_start
+            W = w * loaded_length
+            centroid = (x_start + x_end) / 2
+
+            st.write(
+                f"UDL {i + 1}: "
+                f"{w:.2f} kip/ft from "
+                f"x = {x_start:.2f} ft to "
+                f"x = {x_end:.2f} ft"
+            )
+
+            st.latex(
+                rf"W_{{{i+1}}} = wL"
+                rf" = ({w:.2f})({loaded_length:.2f})"
+                rf" = {W:.2f}\text{{ kip}}"
+            )
+
+            st.write(
+                f"Equivalent resultant acts at "
+                f"x = {centroid:.2f} ft."
+            )
+
+
+    # --------------------------------------------------------
+    # TOTAL LOAD
+    # --------------------------------------------------------
+
+    st.markdown("### Total Applied Load")
+
+    st.latex(
+        rf"\sum P = {total_load:.2f}\text{{ kip}}"
+    )
+
+
+    # --------------------------------------------------------
+    # MOMENT EQUILIBRIUM
+    # --------------------------------------------------------
+
+    st.markdown("### Moment Equilibrium About Support A")
+
+    st.latex(r"\sum M_A = 0")
+
+    st.write(
+        "Taking moments about Support A eliminates "
+        "the unknown reaction RA."
+    )
+
+    moment_terms = []
+
+    for P, a in point_loads:
+
+        moment_terms.append(
+            f"({P:.2f})({a:.2f})"
+        )
+
+    for w, x_start, x_end in udls:
+
+        loaded_length = x_end - x_start
+        W = w * loaded_length
+        centroid = (x_start + x_end) / 2
+
+        moment_terms.append(
+            f"({W:.2f})({centroid:.2f})"
+        )
+
+    if moment_terms:
+
+        applied_moment_text = " + ".join(moment_terms)
+
+    else:
+
+        applied_moment_text = "0"
+
+
+    st.write(
+        f"RB({L:.2f}) = {applied_moment_text}"
+    )
+
+    st.write(
+        f"RB({L:.2f}) = "
+        f"{total_moment_about_A:.2f} kip-ft"
+    )
+
+    st.latex(
+        rf"R_B = "
+        rf"\frac{{{total_moment_about_A:.2f}}}"
+        rf"{{{L:.2f}}}"
+        rf" = {RB:.2f}\text{{ kip}}"
+    )
+
+
+    # --------------------------------------------------------
+    # VERTICAL EQUILIBRIUM
+    # --------------------------------------------------------
+
+    st.markdown("### Vertical Force Equilibrium")
+
+    st.latex(r"\sum F_y = 0")
+
+    st.write(
+        f"RA + RB - Total Load = 0"
+    )
+
+    st.write(
+        f"RA + {RB:.2f} - {total_load:.2f} = 0"
+    )
+
+    st.latex(
+        rf"R_A = "
+        rf"{total_load:.2f} - {RB:.2f}"
+        rf" = {RA:.2f}\text{{ kip}}"
+    )
+
+
+    # --------------------------------------------------------
+    # FINAL REACTION SUMMARY
+    # --------------------------------------------------------
+
+    st.markdown("### Reaction Summary")
+
+    summary_col1, summary_col2 = st.columns(2)
+
+    with summary_col1:
+
+        st.success(
+            f"RA = {RA:.2f} kip"
+        )
+
+    with summary_col2:
+
+        st.success(
+            f"RB = {RB:.2f} kip"
+        )
     # ========================================================
     # ENGINEERING VERIFICATION
     # ========================================================
@@ -838,7 +966,78 @@ if analyze:
         st.error(
             "Equilibrium check failed."
         )
+    # ========================================================
+    # HAND CALCULATION COMPARISON
+    # ========================================================
 
+    st.subheader("Hand-Calculation Verification")
+
+    st.write(
+        """
+        Enter independently calculated support reactions below
+        to compare your hand calculations with the program results.
+        """
+    )
+
+    hand_col1, hand_col2 = st.columns(2)
+
+    with hand_col1:
+        hand_RA = st.number_input(
+            "Hand-Calculated RA (kip)",
+            value=0.0,
+            step=0.01,
+            key="hand_RA"
+        )
+
+    with hand_col2:
+        hand_RB = st.number_input(
+            "Hand-Calculated RB (kip)",
+            value=0.0,
+            step=0.01,
+            key="hand_RB"
+        )
+
+    compare = st.button(
+        "COMPARE HAND CALCULATION"
+    )
+
+    if compare:
+
+        RA_difference = hand_RA - RA
+        RB_difference = hand_RB - RB
+
+        st.markdown("### Comparison Results")
+
+        st.write(
+            f"**RA:** Tool = {RA:.2f} kip | "
+            f"Hand = {hand_RA:.2f} kip | "
+            f"Difference = {RA_difference:.4f} kip"
+        )
+
+        st.write(
+            f"**RB:** Tool = {RB:.2f} kip | "
+            f"Hand = {hand_RB:.2f} kip | "
+            f"Difference = {RB_difference:.4f} kip"
+        )
+
+        tolerance = 0.01
+
+        if (
+            abs(RA_difference) <= tolerance
+            and
+            abs(RB_difference) <= tolerance
+        ):
+
+            st.success(
+                "✓ Hand calculations agree with the program results."
+            )
+
+        else:
+
+            st.warning(
+                "Hand calculations and program results differ. "
+                "Review the calculations."
+            )
 
 # ============================================================
 # DISCLAIMER
