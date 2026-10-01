@@ -8,23 +8,36 @@ import matplotlib.pyplot as plt
 # ============================================================
 
 st.set_page_config(
-    page_title="Structural Beam Analyzer",
+    page_title="Structural Analysis Tool",
     page_icon="🏗️",
     layout="wide"
 )
 
-st.title("🏗️ Structural Beam Analysis Tool")
+st.title("🏗️ Structural Analysis Tool")
 
 st.markdown(
     """
-    **AI-Assisted Structural Analysis Project**
+    **AI-Assisted Structural Engineering Project**
 
-    Analyze a simply supported beam subjected to point loads
-    and uniform distributed loads. The tool calculates support
-    reactions, shear forces, bending moments, and automatically
-    generates structural diagrams.
+    Analyze structural members using dedicated beam, column,
+    and frame analysis modules. Each module provides engineering
+    calculations, visualizations, and verification tools.
     """
 )
+st.markdown("### Analysis Module")
+
+analysis_module = st.segmented_control(
+    "Select a structural analysis module:",
+    options=[
+        "Beam Analysis",
+        "Column Analysis",
+        "Frame Analysis"
+    ],
+    default="Beam Analysis",
+    key="analysis_module"
+)
+
+st.divider()
 
 st.info(
     "Enter the beam geometry and loading conditions below, "
