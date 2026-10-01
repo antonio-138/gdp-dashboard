@@ -39,6 +39,89 @@ analysis_module = st.segmented_control(
 
 st.divider()
 
+# ============================================================
+# MODULE WORKSPACES
+# ============================================================
+
+if analysis_module == "Column Analysis":
+
+    st.header("Column Analysis")
+
+    st.info(
+        "Define the column geometry, material properties, "
+        "cross-section properties, and axial loading below."
+    )
+
+    st.subheader("1. Column Information")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        column_length = st.number_input(
+            "Column Length (ft)",
+            min_value=0.1,
+            value=10.0,
+            step=0.5,
+            key="column_length"
+        )
+
+    with col2:
+        column_load = st.number_input(
+            "Axial Compressive Load (kip)",
+            min_value=0.0,
+            value=50.0,
+            step=1.0,
+            key="column_load"
+        )
+
+    st.subheader("2. Material Properties")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        column_E = st.number_input(
+            "Modulus of Elasticity, E (ksi)",
+            min_value=0.1,
+            value=29000.0,
+            step=100.0,
+            key="column_E"
+        )
+
+    with col2:
+        column_Fy = st.number_input(
+            "Yield Strength, Fy (ksi)",
+            min_value=0.1,
+            value=50.0,
+            step=1.0,
+            key="column_Fy"
+        )
+
+    st.subheader("3. Cross-Section Properties")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        column_area = st.number_input(
+            "Cross-Sectional Area, A (in²)",
+            min_value=0.01,
+            value=10.0,
+            step=0.1,
+            key="column_area"
+        )
+
+    with col2:
+        column_I = st.number_input(
+            "Moment of Inertia, I (in⁴)",
+            min_value=0.01,
+            value=100.0,
+            step=1.0,
+            key="column_I"
+        )
+
+    st.warning(
+        "Column calculations will be added in the next development step."
+    )
+
 st.info(
     "Enter the beam geometry and loading conditions below, "
     "then select ANALYZE BEAM."
