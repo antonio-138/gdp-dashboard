@@ -48,78 +48,127 @@ if analysis_module == "Column Analysis":
     st.header("Column Analysis")
 
     st.info(
-        "Define the column geometry, material properties, "
-        "cross-section properties, and axial loading below."
+        "Analyze a vertical structural member subjected to "
+        "axial and horizontal point loads."
     )
+
+    # ========================================================
+    # 1. COLUMN INFORMATION
+    # ========================================================
 
     st.subheader("1. Column Information")
 
-    col1, col2 = st.columns(2)
+    column_length = st.number_input(
+        "Column Height (ft)",
+        min_value=1.0,
+        value=10.0,
+        step=1.0,
+        key="column_length"
+    )
 
-    with col1:
-        column_length = st.number_input(
-            "Column Length (ft)",
-            min_value=0.1,
-            value=10.0,
-            step=0.5,
-            key="column_length"
+    # ========================================================
+    # 2. AXIAL LOADS
+    # ========================================================
+
+    st.subheader("2. Axial Loads")
+
+    st.write(
+        "Enter vertical loads acting along the axis of the column."
+    )
+
+    number_of_axial_loads = st.number_input(
+        "Number of Axial Point Loads",
+        min_value=0,
+        max_value=6,
+        value=1,
+        step=1,
+        key="number_of_axial_loads"
+    )
+
+    axial_loads = []
+
+    for i in range(int(number_of_axial_loads)):
+
+        st.markdown(f"**Axial Load {i + 1}**")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            P_axial = st.number_input(
+                f"Axial Load {i + 1} Magnitude (kip)",
+                min_value=0.0,
+                value=50.0 if i == 0 else 10.0,
+                step=1.0,
+                key=f"column_axial_P_{i}"
+            )
+
+        with col2:
+            axial_location = st.number_input(
+                f"Axial Load {i + 1} Height from Base (ft)",
+                min_value=0.0,
+                max_value=float(column_length),
+                value=float(column_length),
+                step=1.0,
+                key=f"column_axial_location_{i}"
+            )
+
+        axial_loads.append(
+            (P_axial, axial_location)
         )
 
-    with col2:
-        column_load = st.number_input(
-            "Axial Compressive Load (kip)",
-            min_value=0.0,
-            value=50.0,
-            step=1.0,
-            key="column_load"
-        )
+    # ========================================================
+    # 3. HORIZONTAL LOADS
+    # ========================================================
 
-    st.subheader("2. Material Properties")
+    st.subheader("3. Horizontal Point Loads")
 
-    col1, col2 = st.columns(2)
+    st.write(
+        "Enter horizontal loads acting perpendicular to the column."
+    )
 
-    with col1:
-        column_E = st.number_input(
-            "Modulus of Elasticity, E (ksi)",
-            min_value=0.1,
-            value=29000.0,
-            step=100.0,
-            key="column_E"
-        )
+    number_of_horizontal_loads = st.number_input(
+        "Number of Horizontal Point Loads",
+        min_value=0,
+        max_value=6,
+        value=1,
+        step=1,
+        key="number_of_horizontal_loads"
+    )
 
-    with col2:
-        column_Fy = st.number_input(
-            "Yield Strength, Fy (ksi)",
-            min_value=0.1,
-            value=50.0,
-            step=1.0,
-            key="column_Fy"
-        )
+    horizontal_loads = []
 
-    st.subheader("3. Cross-Section Properties")
+    for i in range(int(number_of_horizontal_loads)):
 
-    col1, col2 = st.columns(2)
+        st.markdown(f"**Horizontal Load {i + 1}**")
 
-    with col1:
-        column_area = st.number_input(
-            "Cross-Sectional Area, A (in²)",
-            min_value=0.01,
-            value=10.0,
-            step=0.1,
-            key="column_area"
-        )
+        col1, col2 = st.columns(2)
 
-    with col2:
-        column_I = st.number_input(
-            "Moment of Inertia, I (in⁴)",
-            min_value=0.01,
-            value=100.0,
-            step=1.0,
-            key="column_I"
+        with col1:
+            H = st.number_input(
+                f"Horizontal Load {i + 1} Magnitude (kip)",
+                min_value=0.0,
+                value=10.0 if i == 0 else 5.0,
+                step=1.0,
+                key=f"column_horizontal_H_{i}"
+            )
+
+        with col2:
+            horizontal_location = st.number_input(
+                f"Horizontal Load {i + 1} Height from Base (ft)",
+                min_value=0.0,
+                max_value=float(column_length),
+                value=float(column_length),
+                step=1.0,
+                key=f"column_horizontal_location_{i}"
+            )
+
+        horizontal_loads.append(
+            (H, horizontal_location)
         )
 
     st.warning(
-        "Column calculations will be added in the next development step."
+        "Column reaction, axial-force, shear-force, and "
+        "bending-moment calculations will be added next."
     )
 
 st.info(
