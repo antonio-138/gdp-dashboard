@@ -166,365 +166,60 @@ if analysis_module == "Column Analysis":
             (H, horizontal_location)
         )
 
-    st.warning(
-        "Column reaction, axial-force, shear-force, and "
-        "bending-moment calculations will be added next."
-    )
+    # ============================================================
+    # COLUMN ANALYSIS
+    # ============================================================
 
-st.info(
-    "Enter the beam geometry and loading conditions below, "
-    "then select ANALYZE BEAM."
-)
+    # ============================================================
+    # COLUMN AND LOAD DIAGRAM
+    # ============================================================
 
-with st.expander("Analysis Assumptions"):
+    st.subheader("Column and Loading Diagram")
 
-    st.markdown(
-        """
-        This tool assumes:
+    fig, ax = plt.subplots(figsize=(4, 5))
 
-        - The beam is simply supported.
-        - Support A is a pin.
-        - Support B is a roller.
-        - Loads act vertically downward.
-        - Point loads act at specified locations.
-        - Distributed loads are uniform over their specified regions.
-        - The beam is analyzed using static equilibrium.
-        - Self-weight is neglected unless entered as a distributed load.
-        """
-    )
+    # ------------------------------------------------------------
+    # Draw column
+    # ------------------------------------------------------------
 
-
-# ============================================================
-# 1. BEAM INFORMATION
-# ============================================================
-
-st.header("1. Beam Information")
-
-L = st.number_input(
-    "Beam Length (ft)",
-    min_value=1.0,
-    value=20.0,
-    step=1.0
-)
-
-
-# ============================================================
-# 2. POINT LOADS
-# ============================================================
-
-st.header("2. Point Loads")
-
-number_of_point_loads = st.number_input(
-    "Number of Point Loads",
-    min_value=0,
-    max_value=6,
-    value=1,
-    step=1
-)
-
-point_loads = []
-
-for i in range(int(number_of_point_loads)):
-
-    st.subheader(f"Point Load {i + 1}")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        P = st.number_input(
-            f"Point Load {i + 1} Magnitude (kip)",
-            min_value=0.0,
-            value=10.0 if i == 0 else 5.0,
-            step=1.0,
-            key=f"P_{i}"
-        )
-
-    with col2:
-
-        default_location = min(
-            float(L),
-            8.0 + i * 4.0
-        )
-
-        a = st.number_input(
-            f"Point Load {i + 1} Location from A (ft)",
-            min_value=0.0,
-            max_value=float(L),
-            value=float(default_location),
-            step=1.0,
-            key=f"a_{i}"
-        )
-
-    point_loads.append((P, a))
-
-
-# ============================================================
-# 3. DISTRIBUTED LOADS
-# ============================================================
-
-st.header("3. Uniform Distributed Loads (UDLs)")
-
-number_of_udls = st.number_input(
-    "Number of Distributed Loads",
-    min_value=0,
-    max_value=4,
-    value=0,
-    step=1
-)
-
-udls = []
-
-for i in range(int(number_of_udls)):
-
-    st.subheader(f"Distributed Load {i + 1}")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-
-        w = st.number_input(
-            f"UDL {i + 1} Intensity (kip/ft)",
-            min_value=0.0,
-            value=2.0,
-            step=0.5,
-            key=f"w_{i}"
-        )
-
-    with col2:
-
-        x_start = st.number_input(
-            f"UDL {i + 1} Start Position (ft)",
-            min_value=0.0,
-            max_value=float(L),
-            value=0.0,
-            step=1.0,
-            key=f"udl_start_{i}"
-        )
-
-    with col3:
-
-        x_end = st.number_input(
-            f"UDL {i + 1} End Position (ft)",
-            min_value=0.0,
-            max_value=float(L),
-            value=float(L),
-            step=1.0,
-            key=f"udl_end_{i}"
-        )
-
-    if x_end <= x_start:
-
-        st.warning(
-            f"UDL {i + 1}: End position must be greater "
-            f"than the start position."
-        )
-
-    udls.append((w, x_start, x_end))
-
-
-# ============================================================
-# 4. ANALYZE
-# ============================================================
-
-st.header("4. Structural Analysis")
-
-if "analyzed" not in st.session_state:
-    st.session_state.analyzed = False
-
-if st.button(
-    "ANALYZE BEAM",
-    type="primary"
-):
-    st.session_state.analyzed = True
-
-analyze = st.session_state.analyzed
-
-if analyze:
-
-    # --------------------------------------------------------
-    # INPUT VALIDATION
-    # --------------------------------------------------------
-
-    valid_input = True
-
-    for i, (w, x_start, x_end) in enumerate(udls):
-
-        if x_end <= x_start:
-
-            st.error(
-                f"Distributed Load {i + 1} has an invalid "
-                f"start/end position."
-            )
-
-            valid_input = False
-
-    if not valid_input:
-
-        st.stop()
-
-
-    # ========================================================
-    # SUPPORT REACTIONS
-    # ========================================================
-
-    # --------------------------------------------------------
-    # Point-load contributions
-    # --------------------------------------------------------
-
-    total_point_load = sum(
-        P for P, a in point_loads
-    )
-
-    point_moment_about_A = sum(
-        P * a for P, a in point_loads
-    )
-
-
-    # --------------------------------------------------------
-    # UDL contributions
-    #
-    # Equivalent resultant:
-    #
-    # W = w(length)
-    #
-    # Acts at the center of the loaded region.
-    # --------------------------------------------------------
-
-    total_udl_load = 0.0
-    udl_moment_about_A = 0.0
-
-    udl_resultants = []
-
-    for w, x_start, x_end in udls:
-
-        loaded_length = x_end - x_start
-
-        W = w * loaded_length
-
-        centroid = (
-            x_start + x_end
-        ) / 2
-
-        total_udl_load += W
-
-        udl_moment_about_A += (
-            W * centroid
-        )
-
-        udl_resultants.append(
-            (
-                W,
-                centroid,
-                loaded_length
-            )
-        )
-
-
-    # --------------------------------------------------------
-    # Total loading
-    # --------------------------------------------------------
-
-    total_load = (
-        total_point_load
-        +
-        total_udl_load
-    )
-
-    total_moment_about_A = (
-        point_moment_about_A
-        +
-        udl_moment_about_A
-    )
-
-
-    # --------------------------------------------------------
-    # Reactions
-    #
-    # Sum MA = 0:
-    #
-    # RB(L) = total moment of applied loads about A
-    #
-    # Sum Fy = 0:
-    #
-    # RA + RB = total downward load
-    # --------------------------------------------------------
-
-    RB = total_moment_about_A / L
-
-    RA = total_load - RB
-
-
-    # ========================================================
-    # DISPLAY REACTIONS
-    # ========================================================
-
-    st.subheader("Support Reactions")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        st.metric(
-            "Left Reaction, RA",
-            f"{RA:.2f} kip"
-        )
-
-    with col2:
-
-        st.metric(
-            "Right Reaction, RB",
-            f"{RB:.2f} kip"
-        )
-
-
-    # ========================================================
-    # BEAM AND LOADING DIAGRAM
-    # ========================================================
-
-    st.subheader("Beam and Loading Diagram")
-
-    fig, ax = plt.subplots(
-        figsize=(12, 4)
-    )
-
-
-    # Beam
     ax.plot(
-        [0, L],
+        [0, 0],
+        [0, column_length],
+        linewidth=6
+    )
+
+    # ------------------------------------------------------------
+    # Draw fixed support at base
+    # ------------------------------------------------------------
+
+    support_width = 0.8
+
+    ax.plot(
+        [-support_width, support_width],
         [0, 0],
         linewidth=4
     )
 
+    # Ground hatch marks
+    for x_ground in np.linspace(-support_width, support_width, 9):
+        ax.plot(
+            [x_ground, x_ground - 0.15],
+            [0, -0.25],
+            linewidth=1
+        )
 
-    # Pin support
-    ax.plot(
-        0,
-        0,
-        marker="^",
-        markersize=18
-    )
+    # ------------------------------------------------------------
+    # Draw axial loads
+    # ------------------------------------------------------------
 
+    for P, load_y in axial_loads:
 
-    # Roller support
-    ax.plot(
-        L,
-        0,
-        marker="o",
-        markersize=14
-    )
-
-
-    # --------------------------------------------------------
-    # Point loads
-    # --------------------------------------------------------
-
-    for P, a in point_loads:
+        arrow_length = column_length * 0.12
 
         ax.annotate(
             "",
-            xy=(a, 0.08),
-            xytext=(a, 1.5),
+            xy=(0, load_y - arrow_length),
+            xytext=(0, load_y),
             arrowprops=dict(
                 arrowstyle="->",
                 linewidth=2
@@ -532,585 +227,1511 @@ if analyze:
         )
 
         ax.text(
-            a,
-            1.65,
+            0.15,
+            load_y,
             f"{P:.1f} kip",
-            horizontalalignment="center"
+            verticalalignment="center"
         )
 
-        ax.text(
-            a,
-            -0.35,
-            f"x = {a:.1f} ft",
-            horizontalalignment="center"
-        )
+    # ------------------------------------------------------------
+    # Draw horizontal loads
+    # ------------------------------------------------------------
 
+    for H, load_y in horizontal_loads:
 
-    # --------------------------------------------------------
-    # Distributed loads
-    # --------------------------------------------------------
+        arrow_length = 0.8
 
-    for w, x_start, x_end in udls:
-
-        arrow_locations = np.linspace(
-            x_start,
-            x_end,
-            9
-        )
-
-        for xpos in arrow_locations:
-
-            ax.annotate(
-                "",
-                xy=(xpos, 0.08),
-                xytext=(xpos, 1.0),
-                arrowprops=dict(
-                    arrowstyle="->",
-                    linewidth=1.5
-                )
+        ax.annotate(
+            "",
+            xy=(0, load_y),
+            xytext=(-arrow_length, load_y),
+            arrowprops=dict(
+                arrowstyle="->",
+                linewidth=2
             )
-
-        ax.plot(
-            [x_start, x_end],
-            [1.0, 1.0],
-            linewidth=2
         )
 
         ax.text(
-            (x_start + x_end) / 2,
-            1.18,
-            f"{w:.2f} kip/ft",
+            -arrow_length,
+            load_y + column_length * 0.025,
+            f"{H:.1f} kip",
             horizontalalignment="center"
         )
 
+    # ------------------------------------------------------------
+    # Labels
+    # ------------------------------------------------------------
 
-    # Support labels
+    ax.text(
+        0.15,
+        column_length / 2,
+        f"L = {column_length:.1f} ft",
+        verticalalignment="center"
+    )
+
     ax.text(
         0,
-        -0.65,
-        "A - Pin",
-        horizontalalignment="center"
+        -0.55,
+        "FIXED BASE",
+        horizontalalignment="center",
+        fontweight="bold"
     )
 
-    ax.text(
-        L,
-        -0.65,
-        "B - Roller",
-        horizontalalignment="center"
-    )
+    # ------------------------------------------------------------
+    # Plot formatting
+    # ------------------------------------------------------------
 
-
-    ax.set_xlim(
-        -0.05 * L,
-        1.05 * L
-    )
-
+    ax.set_xlim(-2, 2)
     ax.set_ylim(
         -1,
-        2.2
+        column_length + column_length * 0.15
     )
 
-    ax.set_xlabel(
-        "Position Along Beam (ft)"
-    )
+    ax.set_ylabel("Height from Base (ft)")
+    ax.set_title("Column Loading Diagram")
 
-    ax.set_yticks([])
-
-    ax.set_title(
-        "Simply Supported Beam"
-    )
+    ax.set_xticks([])
 
     ax.grid(
-        axis="x",
+        True,
+        axis="y",
         alpha=0.3
     )
 
-    st.pyplot(fig)
-
+    st.pyplot(fig, width=550)
     plt.close(fig)
 
+    st.subheader("4. Structural Analysis")
 
-    # ========================================================
-    # SHEAR AND MOMENT CALCULATIONS
-    # ========================================================
+    # Keep column analysis active after Streamlit reruns
+    if "column_analyzed" not in st.session_state:
+        st.session_state.column_analyzed = False
 
-    x = np.linspace(
-        0,
-        L,
-        2001
-    )
+    if st.button(
+        "ANALYZE COLUMN",
+        type="primary",
+        key="analyze_column"
+    ):
+        st.session_state.column_analyzed = True
 
-    V = np.zeros_like(x)
+    analyze_column = st.session_state.column_analyzed
 
-    M = np.zeros_like(x)
+    if analyze_column:
 
+            # --------------------------------------------------------
+            # Base reactions
+            # --------------------------------------------------------
 
-    for i, xi in enumerate(x):
+            total_axial_load = sum(
+                P for P, y in axial_loads
+            )
 
-        # Start with reaction at A
-        shear = RA
+            total_horizontal_load = sum(
+                P for P, y in horizontal_loads
+            )
 
-        moment = RA * xi
+            total_base_moment = sum(
+                P * y for P, y in horizontal_loads
+            )
 
+            axial_reaction = total_axial_load
+            horizontal_reaction = total_horizontal_load
+            base_moment = total_base_moment
 
-        # ----------------------------------------------------
-        # Point-load effects
-        # ----------------------------------------------------
+            # --------------------------------------------------------
+            # Results
+            # --------------------------------------------------------
 
-        for P, a in point_loads:
+            st.subheader("Column Results")
 
-            if xi >= a:
+            col1, col2, col3 = st.columns(3)
 
-                shear -= P
-
-                moment -= (
-                    P * (xi - a)
+            with col1:
+                st.metric(
+                    "Axial Reaction",
+                    f"{axial_reaction:.2f} kip"
                 )
 
+            with col2:
+                st.metric(
+                    "Horizontal Reaction",
+                    f"{horizontal_reaction:.2f} kip"
+                )
 
-        # ----------------------------------------------------
-        # Distributed-load effects
-        # ----------------------------------------------------
+            with col3:
+                st.metric(
+                    "Base Moment",
+                    f"{base_moment:.2f} kip-ft"
+                )
+
+            st.markdown("### Equilibrium Calculations")
+
+            st.write("Axial force equilibrium:")
+            st.latex(
+                rf"R_y = \sum P_y = {axial_reaction:.2f}\ \text{{kip}}"
+            )
+
+            st.write("Horizontal force equilibrium:")
+            st.latex(
+                rf"R_x = \sum P_x = {horizontal_reaction:.2f}\ \text{{kip}}"
+            )
+
+            st.write("Moment equilibrium about the base:")
+            st.latex(
+                rf"M_B = \sum(P_x y) = {base_moment:.2f}\ \text{{kip-ft}}"
+            )
+
+            # ========================================================
+            # COLUMN FORCE DIAGRAMS
+            # ========================================================
+
+            st.subheader("Column Force Diagrams")
+
+            # Positions along the column from base to top
+            y = np.linspace(0, column_length, 500)
+
+            # Initialize internal-force arrays
+            axial_force = np.zeros_like(y)
+            shear_force = np.zeros_like(y)
+            bending_moment = np.zeros_like(y)
+
+            # --------------------------------------------------
+            # AXIAL FORCE
+            # --------------------------------------------------
+
+            for P, load_y in axial_loads:
+
+                # A point axial load affects the portion of the
+                # column below the location where it is applied.
+                axial_force += np.where(y <= load_y, P, 0.0)
+
+            # --------------------------------------------------
+            # SHEAR FORCE
+            # --------------------------------------------------
+
+            for H, load_y in horizontal_loads:
+
+                # Horizontal point load contributes to shear
+                # below its point of application.
+                shear_force += np.where(y <= load_y, H, 0.0)
+
+            # --------------------------------------------------
+            # BENDING MOMENT
+            # --------------------------------------------------
+
+            for H, load_y in horizontal_loads:
+
+                contribution = np.where(
+                    y <= load_y,
+                    H * (load_y - y),
+                    0.0
+                )
+
+                bending_moment += contribution
+
+        
+
+            # --------------------------------------------------------
+            # Axial Force Diagram
+            # --------------------------------------------------------
+
+            st.markdown("### Axial Force Diagram")
+
+            fig, ax = plt.subplots(
+                    figsize=(8, 3)
+                )
+
+            ax.plot(
+                    y,
+                    axial_force,
+                    linewidth=2
+                )
+
+            ax.fill_between(
+                    y,
+                    axial_force,
+                    0,
+                    alpha=0.2
+                )
+
+            ax.axhline(
+                    0,
+                    linewidth=1
+                )
+
+            ax.set_xlabel("Height from Base (ft)")
+            ax.set_ylabel("Axial Force (kip)")
+            ax.set_title("Axial Force Diagram")
+            ax.grid(True)
+
+            st.pyplot(fig, width=850)
+            plt.close(fig)
+
+            # --------------------------------------------------------
+            # Shear Force Diagram
+            # --------------------------------------------------------
+
+            st.markdown("### Shear Force Diagram")
+
+            fig, ax = plt.subplots(
+                    figsize=(8, 3)
+                )
+
+            ax.plot(
+                    y,
+                    shear_force,
+                    linewidth=2
+                )
+
+            ax.fill_between(
+                    y,
+                    shear_force,
+                    0,
+                    alpha=0.2
+                )
+
+            ax.axhline(
+                    0,
+                    linewidth=1
+                )
+
+            ax.set_xlabel("Height from Base (ft)")
+            ax.set_ylabel("Shear Force (kip)")
+            ax.set_title("Shear Force Diagram")
+            ax.grid(True)
+
+            st.pyplot(fig, width=850)
+            plt.close(fig)
+
+            # --------------------------------------------------------
+            # Bending Moment Diagram
+            # --------------------------------------------------------
+
+            st.markdown("### Bending Moment Diagram")
+
+            fig, ax = plt.subplots(
+                    figsize=(8, 3)
+                )
+
+            ax.plot(
+                    y,
+                    bending_moment,
+                    linewidth=2
+                )
+
+            ax.fill_between(
+                    y,
+                    bending_moment,
+                    0,
+                    alpha=0.2
+                )
+
+            ax.axhline(
+                    0,
+                    linewidth=1
+                )
+
+            ax.set_xlabel("Height from Base (ft)")
+            ax.set_ylabel("Bending Moment (kip-ft)")
+            ax.set_title("Bending Moment Diagram")
+            ax.grid(True)
+
+            st.pyplot(fig, width=850)
+            plt.close(fig)
+
+    # ============================================================
+    # FRAME ANALYSIS
+    # ============================================================
+
+if analysis_module == "Frame Analysis":
+
+        st.header("Frame Analysis")
+
+        st.info(
+            "Analyze a one-bay, one-story structural frame "
+            "subjected to vertical and horizontal loads."
+        )
+
+        st.subheader("1. Frame Geometry")
+
+        frame_height = st.number_input(
+            "Column Height (ft)",
+            min_value=1.0,
+            value=10.0,
+            step=1.0,
+            key="frame_height"
+        )
+
+        frame_width = st.number_input(
+            "Beam Span (ft)",
+            min_value=1.0,
+            value=20.0,
+            step=1.0,
+            key="frame_width"
+        )
+
+        # ============================================================
+        # 2. FRAME LOADS
+        # ============================================================
+
+        st.subheader("2. Frame Loads")
+
+        st.write(
+            "Enter vertical loads acting on the beam and a horizontal "
+            "lateral load acting at the top of the frame."
+        )
+
+        # ------------------------------------------------------------
+        # Vertical point load on beam
+        # ------------------------------------------------------------
+
+        vertical_load = st.number_input(
+            "Vertical Point Load on Beam (kip)",
+            min_value=0.0,
+            value=10.0,
+            step=1.0,
+            key="frame_vertical_load"
+        )
+
+        vertical_load_location = st.number_input(
+            "Vertical Load Location from Left Column (ft)",
+            min_value=0.0,
+            max_value=float(frame_width),
+            value=float(frame_width) / 2.0,
+            step=1.0,
+            key="frame_vertical_load_location"
+        )
+
+    # ------------------------------------------------------------
+    # Horizontal lateral load
+    # ------------------------------------------------------------
+
+        lateral_load = st.number_input(
+            "Horizontal Load at Top of Frame (kip)",
+            min_value=0.0,
+            value=5.0,
+            step=1.0,
+            key="frame_lateral_load"
+        )
+
+        # ============================================================
+        # 3. FRAME LOADING DIAGRAM
+        # ============================================================
+
+        st.subheader("3. Frame Loading Diagram")
+
+        fig_frame, ax = plt.subplots(figsize=(7, 4.5))
+
+        # Frame coordinates
+        x_left = 0
+        x_right = frame_width
+        y_base = 0
+        y_top = frame_height
+
+        # ------------------------------------------------------------
+        # Draw frame members
+        # ------------------------------------------------------------
+
+        # Left column
+        ax.plot(
+            [x_left, x_left],
+            [y_base, y_top],
+            linewidth=5
+        )
+
+        # Beam
+        ax.plot(
+            [x_left, x_right],
+            [y_top, y_top],
+            linewidth=5
+        )
+
+        # Right column
+        ax.plot(
+            [x_right, x_right],
+            [y_base, y_top],
+            linewidth=5
+        )
+
+        # ------------------------------------------------------------
+        # Draw vertical beam load
+        # ------------------------------------------------------------
+
+        arrow_vertical = frame_height * 0.25
+
+        ax.annotate(
+            "",
+            xy=(vertical_load_location, y_top),
+            xytext=(vertical_load_location, y_top + arrow_vertical),
+            arrowprops=dict(
+                arrowstyle="->",
+                linewidth=2.5
+            )
+        )
+
+        ax.text(
+            vertical_load_location,
+            y_top + arrow_vertical * 1.1,
+            f"{vertical_load:.1f} kip",
+            ha="center"
+        )
+
+        # ------------------------------------------------------------
+        # Draw horizontal lateral load
+        # ------------------------------------------------------------
+
+        arrow_horizontal = frame_width * 0.18
+
+        ax.annotate(
+            "",
+            xy=(x_left, y_top),
+            xytext=(x_left - arrow_horizontal, y_top),
+            arrowprops=dict(
+                arrowstyle="->",
+                linewidth=2.5
+            )
+        )
+
+        ax.text(
+            x_left - arrow_horizontal,
+            y_top + frame_height * 0.08,
+            f"{lateral_load:.1f} kip",
+            ha="center"
+        )
+
+        # ------------------------------------------------------------
+        # Base/support line
+        # ------------------------------------------------------------
+
+        ax.plot(
+            [-frame_width * 0.08, frame_width * 1.08],
+            [0, 0],
+            linewidth=1.5
+        )
+
+        # ------------------------------------------------------------
+        # Labels
+        # ------------------------------------------------------------
+
+        ax.text(
+            frame_width / 2,
+            -frame_height * 0.12,
+            f"Span = {frame_width:.1f} ft",
+            ha="center"
+        )
+
+        ax.text(
+            -frame_width * 0.08,
+            frame_height / 2,
+            f"{frame_height:.1f} ft",
+            rotation=90,
+            va="center"
+        )
+
+        ax.set_title("Frame Loading Diagram")
+
+        ax.set_aspect("equal", adjustable="box")
+
+        ax.set_xlim(
+            -frame_width * 0.30,
+            frame_width * 1.12
+        )
+
+        ax.set_ylim(
+            -frame_height * 0.18,
+            frame_height * 1.42
+        )
+
+        ax.axis("off")
+
+        st.pyplot(fig_frame, width=750)
+
+        plt.close(fig_frame)
+
+            # ============================================================
+        # 4. STRUCTURAL ANALYSIS
+        # ============================================================
+
+        st.subheader("4. Structural Analysis")
+
+        with st.expander("Frame Analysis Assumptions"):
+            st.markdown(
+                """
+                This frame analysis assumes:
+
+                - A one-bay, one-story rigid portal frame.
+                - Both column bases are fixed.
+                - Beam-to-column connections are rigid.
+                - Members are prismatic and linearly elastic.
+                - Loads act in the plane of the frame.
+                - Small-displacement behavior is assumed.
+                - Member self-weight is neglected unless entered as an applied load.
+                """
+            )
+
+        st.info(
+            "The frame will be analyzed using the 2D matrix stiffness method."
+        )
+
+        if "frame_analyzed" not in st.session_state:
+            st.session_state.frame_analyzed = False
+
+        if st.button(
+            "ANALYZE FRAME",
+            type="primary",
+            key="analyze_frame"
+        ):
+            st.session_state.frame_analyzed = True
+
+        analyze_frame = st.session_state.frame_analyzed
+
+
+    # ============================================================
+    # BEAM ANALYSIS
+    # ============================================================
+
+if analysis_module == "Beam Analysis":
+
+    st.info(
+        "Enter the beam geometry and loading conditions below, "
+        "then select ANALYZE BEAM."
+    )
+
+    with st.expander("Analysis Assumptions"):
+
+        st.markdown(
+            """
+            This tool assumes:
+
+            - The beam is simply supported.
+            - Support A is a pin.
+            - Support B is a roller.
+            - Loads act vertically downward.
+            - Point loads act at specified locations.
+            - Distributed loads are uniform over their specified regions.
+            - The beam is analyzed using static equilibrium.
+            - Self-weight is neglected unless entered as a distributed load.
+            """
+        )
+
+
+    # ============================================================
+    # 1. BEAM INFORMATION
+    # ============================================================
+
+    st.header("1. Beam Information")
+
+    L = st.number_input(
+        "Beam Length (ft)",
+        min_value=1.0,
+        value=20.0,
+        step=1.0
+    )
+
+
+    # ============================================================
+    # 2. POINT LOADS
+    # ============================================================
+
+    st.header("2. Point Loads")
+
+    number_of_point_loads = st.number_input(
+        "Number of Point Loads",
+        min_value=0,
+        max_value=6,
+        value=1,
+        step=1
+    )
+
+    point_loads = []
+
+    for i in range(int(number_of_point_loads)):
+
+        st.subheader(f"Point Load {i + 1}")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            P = st.number_input(
+                f"Point Load {i + 1} Magnitude (kip)",
+                min_value=0.0,
+                value=10.0 if i == 0 else 5.0,
+                step=1.0,
+                key=f"P_{i}"
+            )
+
+        with col2:
+
+            default_location = min(
+                float(L),
+                8.0 + i * 4.0
+            )
+
+            a = st.number_input(
+                f"Point Load {i + 1} Location from A (ft)",
+                min_value=0.0,
+                max_value=float(L),
+                value=float(default_location),
+                step=1.0,
+                key=f"a_{i}"
+            )
+
+        point_loads.append((P, a))
+
+
+    # ============================================================
+    # 3. DISTRIBUTED LOADS
+    # ============================================================
+
+    st.header("3. Uniform Distributed Loads (UDLs)")
+
+    number_of_udls = st.number_input(
+        "Number of Distributed Loads",
+        min_value=0,
+        max_value=4,
+        value=0,
+        step=1
+    )
+
+    udls = []
+
+    for i in range(int(number_of_udls)):
+
+        st.subheader(f"Distributed Load {i + 1}")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+
+            w = st.number_input(
+                f"UDL {i + 1} Intensity (kip/ft)",
+                min_value=0.0,
+                value=2.0,
+                step=0.5,
+                key=f"w_{i}"
+            )
+
+        with col2:
+
+            x_start = st.number_input(
+                f"UDL {i + 1} Start Position (ft)",
+                min_value=0.0,
+                max_value=float(L),
+                value=0.0,
+                step=1.0,
+                key=f"udl_start_{i}"
+            )
+
+        with col3:
+
+            x_end = st.number_input(
+                f"UDL {i + 1} End Position (ft)",
+                min_value=0.0,
+                max_value=float(L),
+                value=float(L),
+                step=1.0,
+                key=f"udl_end_{i}"
+            )
+
+        if x_end <= x_start:
+
+            st.warning(
+                f"UDL {i + 1}: End position must be greater "
+                f"than the start position."
+            )
+
+        udls.append((w, x_start, x_end))
+
+
+    # ============================================================
+    # 4. ANALYZE
+    # ============================================================
+
+    st.header("4. Structural Analysis")
+
+    if "analyzed" not in st.session_state:
+        st.session_state.analyzed = False
+
+    if st.button(
+        "ANALYZE BEAM",
+        type="primary"
+    ):
+        st.session_state.analyzed = True
+
+    analyze = st.session_state.analyzed
+
+    if analyze:
+
+        # --------------------------------------------------------
+        # INPUT VALIDATION
+        # --------------------------------------------------------
+
+        valid_input = True
+
+        for i, (w, x_start, x_end) in enumerate(udls):
+
+            if x_end <= x_start:
+
+                st.error(
+                    f"Distributed Load {i + 1} has an invalid "
+                    f"start/end position."
+                )
+
+                valid_input = False
+
+        if not valid_input:
+
+            st.stop()
+
+
+        # ========================================================
+        # SUPPORT REACTIONS
+        # ========================================================
+
+        # --------------------------------------------------------
+        # Point-load contributions
+        # --------------------------------------------------------
+
+        total_point_load = sum(
+            P for P, a in point_loads
+        )
+
+        point_moment_about_A = sum(
+            P * a for P, a in point_loads
+        )
+
+
+        # --------------------------------------------------------
+        # UDL contributions
+        #
+        # Equivalent resultant:
+        #
+        # W = w(length)
+        #
+        # Acts at the center of the loaded region.
+        # --------------------------------------------------------
+
+        total_udl_load = 0.0
+        udl_moment_about_A = 0.0
+
+        udl_resultants = []
 
         for w, x_start, x_end in udls:
 
-            # Section is before the UDL
-            if xi <= x_start:
+            loaded_length = x_end - x_start
 
-                loaded_length = 0.0
+            W = w * loaded_length
 
+            centroid = (
+                x_start + x_end
+            ) / 2
 
-            # Section passes through the UDL
-            elif xi < x_end:
+            total_udl_load += W
 
-                loaded_length = (
-                    xi - x_start
+            udl_moment_about_A += (
+                W * centroid
+            )
+
+            udl_resultants.append(
+                (
+                    W,
+                    centroid,
+                    loaded_length
                 )
-
-
-            # Section is after the entire UDL
-            else:
-
-                loaded_length = (
-                    x_end - x_start
-                )
-
-
-            if loaded_length > 0:
-
-                W_partial = (
-                    w * loaded_length
-                )
-
-                centroid_partial = (
-                    x_start
-                    +
-                    loaded_length / 2
-                )
-
-                shear -= W_partial
-
-                moment -= (
-                    W_partial
-                    *
-                    (
-                        xi
-                        -
-                        centroid_partial
-                    )
-                )
-
-
-        V[i] = shear
-
-        M[i] = moment
-
-
-    # ========================================================
-    # MAXIMUM MOMENT
-    # ========================================================
-
-    max_index = np.argmax(
-        np.abs(M)
-    )
-
-    Mmax = M[max_index]
-
-    xmax = x[max_index]
-
-
-    st.subheader(
-        "Maximum Bending Moment"
-    )
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        st.metric(
-            "Maximum Moment",
-            f"{Mmax:.2f} kip-ft"
-        )
-
-    with col2:
-
-        st.metric(
-            "Location from A",
-            f"{xmax:.2f} ft"
-        )
-
-
-    # ========================================================
-    # SHEAR FORCE DIAGRAM
-    # ========================================================
-
-    st.subheader(
-        "Shear Force Diagram"
-    )
-
-    fig_shear, ax_shear = plt.subplots(
-        figsize=(12, 4)
-    )
-
-    ax_shear.plot(
-        x,
-        V,
-        linewidth=2
-    )
-
-    ax_shear.axhline(
-        0,
-        linewidth=1
-    )
-
-    ax_shear.fill_between(
-        x,
-        V,
-        0,
-        alpha=0.2
-    )
-
-    ax_shear.set_xlabel(
-        "Position Along Beam (ft)"
-    )
-
-    ax_shear.set_ylabel(
-        "Shear, V (kip)"
-    )
-
-    ax_shear.set_title(
-        "Shear Force Diagram"
-    )
-
-    ax_shear.grid(
-        alpha=0.3
-    )
-
-    st.pyplot(
-        fig_shear
-    )
-
-    plt.close(
-        fig_shear
-    )
-
-
-    # ========================================================
-    # BENDING MOMENT DIAGRAM
-    # ========================================================
-
-    st.subheader(
-        "Bending Moment Diagram"
-    )
-
-    fig_moment, ax_moment = plt.subplots(
-        figsize=(12, 4)
-    )
-
-    ax_moment.plot(
-        x,
-        M,
-        linewidth=2
-    )
-
-    ax_moment.axhline(
-        0,
-        linewidth=1
-    )
-
-    ax_moment.fill_between(
-        x,
-        M,
-        0,
-        alpha=0.2
-    )
-
-    ax_moment.plot(
-        xmax,
-        Mmax,
-        marker="o"
-    )
-
-
-    # Put the Mmax label inside the graph
-    # instead of overlapping the title.
-
-    ax_moment.annotate(
-        f"Mmax = {Mmax:.2f} kip-ft\n"
-        f"x = {xmax:.2f} ft",
-        xy=(xmax, Mmax),
-        xytext=(15, -35),
-        textcoords="offset points",
-        arrowprops=dict(
-            arrowstyle="->"
-        )
-    )
-
-    ax_moment.set_xlabel(
-        "Position Along Beam (ft)"
-    )
-
-    ax_moment.set_ylabel(
-        "Moment, M (kip-ft)"
-    )
-
-    ax_moment.set_title(
-        "Bending Moment Diagram"
-    )
-
-    ax_moment.grid(
-        alpha=0.3
-    )
-
-    st.pyplot(
-        fig_moment
-    )
-
-    plt.close(
-        fig_moment
-    )
-
-
-    # ========================================================
-    # STEP-BY-STEP CALCULATIONS
-    # ========================================================
-
-    st.subheader("Step-by-Step Calculations")
-
-    st.write(
-        "The support reactions are determined using "
-        "the static-equilibrium equations."
-    )
-
-    st.latex(r"\sum F_y = 0")
-    st.latex(r"\sum M_A = 0")
-
-
-    # --------------------------------------------------------
-    # APPLIED LOADS
-    # --------------------------------------------------------
-
-    st.markdown("### Applied Loads")
-
-    if len(point_loads) > 0:
-
-        st.markdown("**Point Loads**")
-
-        for i, (P, a) in enumerate(point_loads):
-
-            st.write(
-                f"Point Load {i + 1}: "
-                f"{P:.2f} kip at x = {a:.2f} ft"
             )
 
 
-    if len(udls) > 0:
+        # --------------------------------------------------------
+        # Total loading
+        # --------------------------------------------------------
 
-        st.markdown("**Uniform Distributed Loads**")
+        total_load = (
+            total_point_load
+            +
+            total_udl_load
+        )
 
-        for i, (w, x_start, x_end) in enumerate(udls):
+        total_moment_about_A = (
+            point_moment_about_A
+            +
+            udl_moment_about_A
+        )
+
+
+        # --------------------------------------------------------
+        # Reactions
+        #
+        # Sum MA = 0:
+        #
+        # RB(L) = total moment of applied loads about A
+        #
+        # Sum Fy = 0:
+        #
+        # RA + RB = total downward load
+        # --------------------------------------------------------
+
+        RB = total_moment_about_A / L
+
+        RA = total_load - RB
+
+
+        # ========================================================
+        # DISPLAY REACTIONS
+        # ========================================================
+
+        st.subheader("Support Reactions")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            st.metric(
+                "Left Reaction, RA",
+                f"{RA:.2f} kip"
+            )
+
+        with col2:
+
+            st.metric(
+                "Right Reaction, RB",
+                f"{RB:.2f} kip"
+            )
+
+
+        # ========================================================
+        # BEAM AND LOADING DIAGRAM
+        # ========================================================
+
+        st.subheader("Beam and Loading Diagram")
+
+        fig, ax = plt.subplots(
+            figsize=(8, 3)
+        )
+
+
+        # Beam
+        ax.plot(
+            [0, L],
+            [0, 0],
+            linewidth=4
+        )
+
+
+        # Pin support
+        ax.plot(
+            0,
+            0,
+            marker="^",
+            markersize=18
+        )
+
+
+        # Roller support
+        ax.plot(
+            L,
+            0,
+            marker="o",
+            markersize=14
+        )
+
+
+        # --------------------------------------------------------
+        # Point loads
+        # --------------------------------------------------------
+
+        for P, a in point_loads:
+
+            ax.annotate(
+                "",
+                xy=(a, 0.08),
+                xytext=(a, 1.5),
+                arrowprops=dict(
+                    arrowstyle="->",
+                    linewidth=2
+                )
+            )
+
+            ax.text(
+                a,
+                1.65,
+                f"{P:.1f} kip",
+                horizontalalignment="center"
+            )
+
+            ax.text(
+                a,
+                -0.35,
+                f"x = {a:.1f} ft",
+                horizontalalignment="center"
+            )
+
+
+        # --------------------------------------------------------
+        # Distributed loads
+        # --------------------------------------------------------
+
+        for w, x_start, x_end in udls:
+
+            arrow_locations = np.linspace(
+                x_start,
+                x_end,
+                9
+            )
+
+            for xpos in arrow_locations:
+
+                ax.annotate(
+                    "",
+                    xy=(xpos, 0.08),
+                    xytext=(xpos, 1.0),
+                    arrowprops=dict(
+                        arrowstyle="->",
+                        linewidth=1.5
+                    )
+                )
+
+            ax.plot(
+                [x_start, x_end],
+                [1.0, 1.0],
+                linewidth=2
+            )
+
+            ax.text(
+                (x_start + x_end) / 2,
+                1.18,
+                f"{w:.2f} kip/ft",
+                horizontalalignment="center"
+            )
+
+
+        # Support labels
+        ax.text(
+            0,
+            -0.65,
+            "A - Pin",
+            horizontalalignment="center"
+        )
+
+        ax.text(
+            L,
+            -0.65,
+            "B - Roller",
+            horizontalalignment="center"
+        )
+
+
+        ax.set_xlim(
+            -0.05 * L,
+            1.05 * L
+        )
+
+        ax.set_ylim(
+            -1,
+            2.2
+        )
+
+        ax.set_xlabel(
+            "Position Along Beam (ft)"
+        )
+
+        ax.set_yticks([])
+
+        ax.set_title(
+            "Simply Supported Beam"
+        )
+
+        ax.grid(
+            axis="x",
+            alpha=0.3
+        )
+
+        st.pyplot(fig, width=850)
+
+        plt.close(fig)
+
+
+        # ========================================================
+        # SHEAR AND MOMENT CALCULATIONS
+        # ========================================================
+
+        x = np.linspace(
+            0,
+            L,
+            2001
+        )
+
+        V = np.zeros_like(x)
+
+        M = np.zeros_like(x)
+
+
+        for i, xi in enumerate(x):
+
+            # Start with reaction at A
+            shear = RA
+
+            moment = RA * xi
+
+
+            # ----------------------------------------------------
+            # Point-load effects
+            # ----------------------------------------------------
+
+            for P, a in point_loads:
+
+                if xi >= a:
+
+                    shear -= P
+
+                    moment -= (
+                        P * (xi - a)
+                    )
+
+
+            # ----------------------------------------------------
+            # Distributed-load effects
+            # ----------------------------------------------------
+
+            for w, x_start, x_end in udls:
+
+                # Section is before the UDL
+                if xi <= x_start:
+
+                    loaded_length = 0.0
+
+
+                # Section passes through the UDL
+                elif xi < x_end:
+
+                    loaded_length = (
+                        xi - x_start
+                    )
+
+
+                # Section is after the entire UDL
+                else:
+
+                    loaded_length = (
+                        x_end - x_start
+                    )
+
+
+                if loaded_length > 0:
+
+                    W_partial = (
+                        w * loaded_length
+                    )
+
+                    centroid_partial = (
+                        x_start
+                        +
+                        loaded_length / 2
+                    )
+
+                    shear -= W_partial
+
+                    moment -= (
+                        W_partial
+                        *
+                        (
+                            xi
+                            -
+                            centroid_partial
+                        )
+                    )
+
+
+            V[i] = shear
+
+            M[i] = moment
+
+
+        # ========================================================
+        # MAXIMUM MOMENT
+        # ========================================================
+
+        max_index = np.argmax(
+            np.abs(M)
+        )
+
+        Mmax = M[max_index]
+
+        xmax = x[max_index]
+
+
+        st.subheader(
+            "Maximum Bending Moment"
+        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            st.metric(
+                "Maximum Moment",
+                f"{Mmax:.2f} kip-ft"
+            )
+
+        with col2:
+
+            st.metric(
+                "Location from A",
+                f"{xmax:.2f} ft"
+            )
+
+
+        # ========================================================
+        # SHEAR FORCE DIAGRAM
+        # ========================================================
+
+        st.subheader(
+            "Shear Force Diagram"
+        )
+
+        fig_shear, ax_shear = plt.subplots(
+            figsize=(8, 3)
+        )
+
+        ax_shear.plot(
+            x,
+            V,
+            linewidth=2
+        )
+
+        ax_shear.axhline(
+            0,
+            linewidth=1
+        )
+
+        ax_shear.fill_between(
+            x,
+            V,
+            0,
+            alpha=0.2
+        )
+
+        ax_shear.set_xlabel(
+            "Position Along Beam (ft)"
+        )
+
+        ax_shear.set_ylabel(
+            "Shear, V (kip)"
+        )
+
+        ax_shear.set_title(
+            "Shear Force Diagram"
+        )
+
+        ax_shear.grid(
+            alpha=0.3
+        )
+
+        st.pyplot(
+            fig_shear, width=850
+        )
+
+        plt.close(
+            fig_shear
+        )
+
+
+        # ========================================================
+        # BENDING MOMENT DIAGRAM
+        # ========================================================
+
+        st.subheader(
+            "Bending Moment Diagram"
+        )
+
+        fig_moment, ax_moment = plt.subplots(
+            figsize=(8, 3)
+        )
+
+        ax_moment.plot(
+            x,
+            M,
+            linewidth=2
+        )
+
+        ax_moment.axhline(
+            0,
+            linewidth=1
+        )
+
+        ax_moment.fill_between(
+            x,
+            M,
+            0,
+            alpha=0.2
+        )
+
+        ax_moment.plot(
+            xmax,
+            Mmax,
+            marker="o"
+        )
+
+
+        # Put the Mmax label inside the graph
+        # instead of overlapping the title.
+
+        ax_moment.annotate(
+            f"Mmax = {Mmax:.2f} kip-ft\n"
+            f"x = {xmax:.2f} ft",
+            xy=(xmax, Mmax),
+            xytext=(15, -35),
+            textcoords="offset points",
+            arrowprops=dict(
+                arrowstyle="->"
+            )
+        )
+
+        ax_moment.set_xlabel(
+            "Position Along Beam (ft)"
+        )
+
+        ax_moment.set_ylabel(
+            "Moment, M (kip-ft)"
+        )
+
+        ax_moment.set_title(
+            "Bending Moment Diagram"
+        )
+
+        ax_moment.grid(
+            alpha=0.3
+        )
+
+        st.pyplot(
+            fig_moment, width=850
+        )
+
+        plt.close(
+            fig_moment
+        )
+
+
+        # ========================================================
+        # STEP-BY-STEP CALCULATIONS
+        # ========================================================
+
+        st.subheader("Step-by-Step Calculations")
+
+        st.write(
+            "The support reactions are determined using "
+            "the static-equilibrium equations."
+        )
+
+        st.latex(r"\sum F_y = 0")
+        st.latex(r"\sum M_A = 0")
+
+
+        # --------------------------------------------------------
+        # APPLIED LOADS
+        # --------------------------------------------------------
+
+        st.markdown("### Applied Loads")
+
+        if len(point_loads) > 0:
+
+            st.markdown("**Point Loads**")
+
+            for i, (P, a) in enumerate(point_loads):
+
+                st.write(
+                    f"Point Load {i + 1}: "
+                    f"{P:.2f} kip at x = {a:.2f} ft"
+                )
+
+
+        if len(udls) > 0:
+
+            st.markdown("**Uniform Distributed Loads**")
+
+            for i, (w, x_start, x_end) in enumerate(udls):
+
+                loaded_length = x_end - x_start
+                W = w * loaded_length
+                centroid = (x_start + x_end) / 2
+
+                st.write(
+                    f"UDL {i + 1}: "
+                    f"{w:.2f} kip/ft from "
+                    f"x = {x_start:.2f} ft to "
+                    f"x = {x_end:.2f} ft"
+                )
+
+                st.latex(
+                    rf"W_{{{i+1}}} = wL"
+                    rf" = ({w:.2f})({loaded_length:.2f})"
+                    rf" = {W:.2f}\text{{ kip}}"
+                )
+
+                st.write(
+                    f"Equivalent resultant acts at "
+                    f"x = {centroid:.2f} ft."
+                )
+
+
+        # --------------------------------------------------------
+        # TOTAL LOAD
+        # --------------------------------------------------------
+
+        st.markdown("### Total Applied Load")
+
+        st.latex(
+            rf"\sum P = {total_load:.2f}\text{{ kip}}"
+        )
+
+
+        # --------------------------------------------------------
+        # MOMENT EQUILIBRIUM
+        # --------------------------------------------------------
+
+        st.markdown("### Moment Equilibrium About Support A")
+
+        st.latex(r"\sum M_A = 0")
+
+        st.write(
+            "Taking moments about Support A eliminates "
+            "the unknown reaction RA."
+        )
+
+        moment_terms = []
+
+        for P, a in point_loads:
+
+            moment_terms.append(
+                f"({P:.2f})({a:.2f})"
+            )
+
+        for w, x_start, x_end in udls:
 
             loaded_length = x_end - x_start
             W = w * loaded_length
             centroid = (x_start + x_end) / 2
 
-            st.write(
-                f"UDL {i + 1}: "
-                f"{w:.2f} kip/ft from "
-                f"x = {x_start:.2f} ft to "
-                f"x = {x_end:.2f} ft"
+            moment_terms.append(
+                f"({W:.2f})({centroid:.2f})"
             )
 
-            st.latex(
-                rf"W_{{{i+1}}} = wL"
-                rf" = ({w:.2f})({loaded_length:.2f})"
-                rf" = {W:.2f}\text{{ kip}}"
+        if moment_terms:
+
+            applied_moment_text = " + ".join(moment_terms)
+
+        else:
+
+            applied_moment_text = "0"
+
+
+        st.write(
+            f"RB({L:.2f}) = {applied_moment_text}"
+        )
+
+        st.write(
+            f"RB({L:.2f}) = "
+            f"{total_moment_about_A:.2f} kip-ft"
+        )
+
+        st.latex(
+            rf"R_B = "
+            rf"\frac{{{total_moment_about_A:.2f}}}"
+            rf"{{{L:.2f}}}"
+            rf" = {RB:.2f}\text{{ kip}}"
+        )
+
+
+        # --------------------------------------------------------
+        # VERTICAL EQUILIBRIUM
+        # --------------------------------------------------------
+
+        st.markdown("### Vertical Force Equilibrium")
+
+        st.latex(r"\sum F_y = 0")
+
+        st.write(
+            f"RA + RB - Total Load = 0"
+        )
+
+        st.write(
+            f"RA + {RB:.2f} - {total_load:.2f} = 0"
+        )
+
+        st.latex(
+            rf"R_A = "
+            rf"{total_load:.2f} - {RB:.2f}"
+            rf" = {RA:.2f}\text{{ kip}}"
+        )
+
+
+        # --------------------------------------------------------
+        # FINAL REACTION SUMMARY
+        # --------------------------------------------------------
+
+        st.markdown("### Reaction Summary")
+
+        summary_col1, summary_col2 = st.columns(2)
+
+        with summary_col1:
+
+            st.success(
+                f"RA = {RA:.2f} kip"
             )
 
-            st.write(
-                f"Equivalent resultant acts at "
-                f"x = {centroid:.2f} ft."
+        with summary_col2:
+
+            st.success(
+                f"RB = {RB:.2f} kip"
+            )
+        # ========================================================
+        # ENGINEERING VERIFICATION
+        # ========================================================
+
+        st.subheader(
+            "Engineering Verification"
+        )
+
+        vertical_error = (
+            RA
+            +
+            RB
+            -
+            total_load
+        )
+
+        moment_error = (
+            RB * L
+            -
+            total_moment_about_A
+        )
+
+        st.write(
+            f"ΣFy residual: "
+            f"{vertical_error:.6f} kip"
+        )
+
+        st.write(
+            f"ΣMA residual: "
+            f"{moment_error:.6f} kip-ft"
+        )
+
+
+        if (
+            abs(vertical_error) < 0.0001
+            and
+            abs(moment_error) < 0.0001
+        ):
+
+            st.success(
+                "Equilibrium checks satisfied."
             )
 
+        else:
 
-    # --------------------------------------------------------
-    # TOTAL LOAD
-    # --------------------------------------------------------
-
-    st.markdown("### Total Applied Load")
-
-    st.latex(
-        rf"\sum P = {total_load:.2f}\text{{ kip}}"
-    )
-
-
-    # --------------------------------------------------------
-    # MOMENT EQUILIBRIUM
-    # --------------------------------------------------------
-
-    st.markdown("### Moment Equilibrium About Support A")
-
-    st.latex(r"\sum M_A = 0")
-
-    st.write(
-        "Taking moments about Support A eliminates "
-        "the unknown reaction RA."
-    )
-
-    moment_terms = []
-
-    for P, a in point_loads:
-
-        moment_terms.append(
-            f"({P:.2f})({a:.2f})"
-        )
-
-    for w, x_start, x_end in udls:
-
-        loaded_length = x_end - x_start
-        W = w * loaded_length
-        centroid = (x_start + x_end) / 2
-
-        moment_terms.append(
-            f"({W:.2f})({centroid:.2f})"
-        )
-
-    if moment_terms:
-
-        applied_moment_text = " + ".join(moment_terms)
-
-    else:
-
-        applied_moment_text = "0"
-
-
-    st.write(
-        f"RB({L:.2f}) = {applied_moment_text}"
-    )
-
-    st.write(
-        f"RB({L:.2f}) = "
-        f"{total_moment_about_A:.2f} kip-ft"
-    )
-
-    st.latex(
-        rf"R_B = "
-        rf"\frac{{{total_moment_about_A:.2f}}}"
-        rf"{{{L:.2f}}}"
-        rf" = {RB:.2f}\text{{ kip}}"
-    )
-
-
-    # --------------------------------------------------------
-    # VERTICAL EQUILIBRIUM
-    # --------------------------------------------------------
-
-    st.markdown("### Vertical Force Equilibrium")
-
-    st.latex(r"\sum F_y = 0")
-
-    st.write(
-        f"RA + RB - Total Load = 0"
-    )
-
-    st.write(
-        f"RA + {RB:.2f} - {total_load:.2f} = 0"
-    )
-
-    st.latex(
-        rf"R_A = "
-        rf"{total_load:.2f} - {RB:.2f}"
-        rf" = {RA:.2f}\text{{ kip}}"
-    )
-
-
-    # --------------------------------------------------------
-    # FINAL REACTION SUMMARY
-    # --------------------------------------------------------
-
-    st.markdown("### Reaction Summary")
-
-    summary_col1, summary_col2 = st.columns(2)
-
-    with summary_col1:
-
-        st.success(
-            f"RA = {RA:.2f} kip"
-        )
-
-    with summary_col2:
-
-        st.success(
-            f"RB = {RB:.2f} kip"
-        )
-    # ========================================================
-    # ENGINEERING VERIFICATION
-    # ========================================================
-
-    st.subheader(
-        "Engineering Verification"
-    )
-
-    vertical_error = (
-        RA
-        +
-        RB
-        -
-        total_load
-    )
-
-    moment_error = (
-        RB * L
-        -
-        total_moment_about_A
-    )
-
-    st.write(
-        f"ΣFy residual: "
-        f"{vertical_error:.6f} kip"
-    )
-
-    st.write(
-        f"ΣMA residual: "
-        f"{moment_error:.6f} kip-ft"
-    )
-
-
-    if (
-        abs(vertical_error) < 0.0001
-        and
-        abs(moment_error) < 0.0001
-    ):
-
-        st.success(
-            "Equilibrium checks satisfied."
-        )
-
-    else:
-
-        st.error(
-            "Equilibrium check failed."
-        )
+            st.error(
+                "Equilibrium check failed."
+            )
     # ========================================================
     # HAND CALCULATION COMPARISON
     # ========================================================
