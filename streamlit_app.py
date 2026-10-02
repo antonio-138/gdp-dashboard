@@ -570,6 +570,57 @@ if analysis_module == "Frame Analysis":
             key="frame_width"
         )
 
+        # ------------------------------------------------------------
+        # Frame material and section properties
+        # ------------------------------------------------------------
+
+        with st.expander("Frame Properties"):
+
+            st.write(
+                "Enter the material and member stiffness properties "
+                "used in the frame analysis."
+            )
+
+            frame_E = st.number_input(
+                "Modulus of Elasticity, E (ksi)",
+                min_value=1.0,
+                value=29000.0,
+                step=1000.0,
+                key="frame_E"
+            )
+
+            frame_column_I = st.number_input(
+                "Column Moment of Inertia, I (in⁴)",
+                min_value=1.0,
+                value=500.0,
+                step=10.0,
+                key="frame_column_I"
+            )
+
+            frame_beam_I = st.number_input(
+                "Beam Moment of Inertia, I (in⁴)",
+                min_value=1.0,
+                value=800.0,
+                step=10.0,
+                key="frame_beam_I"
+            )
+
+            frame_column_A = st.number_input(
+                "Column Cross-Sectional Area, A (in²)",
+                min_value=0.1,
+                value=10.0,
+                step=1.0,
+                key="frame_column_A"
+            )
+
+            frame_beam_A = st.number_input(
+                "Beam Cross-Sectional Area, A (in²)",
+                min_value=0.1,
+                value=10.0,
+                step=1.0,
+                key="frame_beam_A"
+            )
+
         # ============================================================
         # 2. FRAME LOADS
         # ============================================================
@@ -748,7 +799,7 @@ if analysis_module == "Frame Analysis":
 
         plt.close(fig_frame)
 
-            # ============================================================
+        # ============================================================
         # 4. STRUCTURAL ANALYSIS
         # ============================================================
 
@@ -784,6 +835,67 @@ if analysis_module == "Frame Analysis":
             st.session_state.frame_analyzed = True
 
         analyze_frame = st.session_state.frame_analyzed
+
+        if analyze_frame:
+
+            # ------------------------------------------------------------
+            # Convert geometry and properties to consistent units
+            # ------------------------------------------------------------
+
+            H = frame_height * 12.0
+            L_frame = frame_width * 12.0
+
+            E = frame_E
+            Ic = frame_column_I
+            Ib = frame_beam_I
+            Ac = frame_column_A
+            Ab = frame_beam_A
+
+            P = vertical_load
+            a = vertical_load_location * 12.0
+            H_load = lateral_load
+
+            # ------------------------------------------------------------
+            # Input validation
+            # ------------------------------------------------------------
+
+            if a < 0.0 or a > L_frame:
+                st.error(
+                    "Vertical load location must be within the beam span."
+                )
+
+            else:
+
+                # ------------------------------------------------------------
+                # Beam fixed-end moments from vertical point load
+                # ------------------------------------------------------------
+
+                b = L_frame - a
+
+                FEM_left = -(P * a * b**2) / (L_frame**2)
+                FEM_right = (P * a**2 * b) / (L_frame**2)
+
+                # Convert kip-in to kip-ft for display
+                FEM_left_ft = FEM_left / 12.0
+                FEM_right_ft = FEM_right / 12.0
+
+                st.success("Frame analysis completed.")
+
+                st.subheader("Initial Frame Analysis Results")
+
+                result_col1, result_col2 = st.columns(2)
+
+                with result_col1:
+                    st.metric(
+                        "Beam Left Fixed-End Moment",
+                        f"{FEM_left_ft:.2f} kip-ft"
+                    )
+
+                with result_col2:
+                    st.metric(
+                        "Beam Right Fixed-End Moment",
+                        f"{FEM_right_ft:.2f} kip-ft"
+                    )
 
 
     # ============================================================
