@@ -821,7 +821,8 @@ if analysis_module == "Frame Analysis":
             )
 
         st.info(
-            "The frame will be analyzed using the 2D matrix stiffness method."
+            "Analyze the frame to determine support reactions, "
+            "internal member forces, and force diagrams."
         )
 
         if "frame_analyzed" not in st.session_state:
@@ -867,36 +868,1149 @@ if analysis_module == "Frame Analysis":
             else:
 
                 # ------------------------------------------------------------
-                # Beam fixed-end moments from vertical point load
+                # 2D FRAME MATRIX STIFFNESS ANALYSIS
                 # ------------------------------------------------------------
 
-                b = L_frame - a
+                # Node coordinates in inches
+                # Node 0 = left base
+                # Node 1 = left beam-column joint
+                # Node 2 = right beam-column joint
+                # Node 3 = right base
 
-                FEM_left = -(P * a * b**2) / (L_frame**2)
-                FEM_right = (P * a**2 * b) / (L_frame**2)
+                nodes = np.array([
+                    [0.0, 0.0],
+                    [0.0, H],
+                    [L_frame, H],
+                    [L_frame, 0.0]
+                ])
 
-                # Convert kip-in to kip-ft for display
-                FEM_left_ft = FEM_left / 12.0
-                FEM_right_ft = FEM_right / 12.0
+                # Each node has 3 DOFs:
+                # horizontal displacement, vertical displacement, rotation
+                dof_per_node = 3
+                total_dof = len(nodes) * dof_per_node
+
+                K_global = np.zeros((total_dof, total_dof))
+                F_global = np.zeros(total_dof)
+
+                # ------------------------------------------------------------
+                # Frame element stiffness function
+                # ------------------------------------------------------------
+
+                def frame_element_stiffness(E, A, I, x1, y1, x2, y2):
+
+                    dx = x2 - x1
+                    dy = y2 - y1
+                    L = np.sqrt(dx**2 + dy**2)
+
+                    c = dx / L
+                    s = dy / L
+
+                    k_local = np.array([
+                        [ E*A/L,          0,           0, -E*A/L,          0,           0],
+                        [     0, 12*E*I/L**3,  6*E*I/L**2,      0, -12*E*I/L**3,  6*E*I/L**2],
+                        [     0,  6*E*I/L**2,    4*E*I/L,      0,  -6*E*I/L**2,    2*E*I/L],
+                        [-E*A/L,          0,           0,  E*A/L,          0,           0],
+                        [     0,-12*E*I/L**3, -6*E*I/L**2,      0,  12*E*I/L**3, -6*E*I/L**2],
+                        [     0,  6*E*I/L**2,    2*E*I/L,      0,  -6*E*I/L**2,    4*E*I/L]
+                    ])
+
+                    T = np.array([
+                        [ c,  s, 0,  0,  0, 0],
+                        [-s,  c, 0,  0,  0, 0],
+                        [ 0,  0, 1,  0,  0, 0],
+                        [ 0,  0, 0,  c,  s, 0],
+                        [ 0,  0, 0, -s,  c, 0],
+                        [ 0,  0, 0,  0,  0, 1]
+                    ])
+
+                    k_global_element = T.T @ k_local @ T
+
+                    return k_global_element, k_local, T, L
+
+                # ------------------------------------------------------------
+                # Assemble global frame stiffness matrix
+                # ------------------------------------------------------------
+
+                total_dof = 12
+
+                K_global = np.zeros((total_dof, total_dof))
+                F_global = np.zeros(total_dof)
+
+                # Frame members:
+                # Member 1 = left column:  node 0 -> node 1
+                # Member 2 = beam:         node 1 -> node 2
+                # Member 3 = right column: node 2 -> node 3
+
+                elements = [
+                    (0, 1, Ac, Ic),
+                    (1, 2, Ab, Ib),
+                    (2, 3, Ac, Ic)
+                ]
+
+                element_data = []
+
+                for node_i, node_j, A_elem, I_elem in elements:
+
+                    x1, y1 = nodes[node_i]
+                    x2, y2 = nodes[node_j]
+
+                    k_elem, k_local, T, elem_L = frame_element_stiffness(
+                        E,
+                        A_elem,
+                        I_elem,
+                        x1,
+                        y1,
+                        x2,
+                        y2
+                    )
+
+                    dofs = [
+                        3 * node_i,
+                        3 * node_i + 1,
+                        3 * node_i + 2,
+                        3 * node_j,
+                        3 * node_j + 1,
+                        3 * node_j + 2
+                    ]
+
+                    for i in range(6):
+                        for j in range(6):
+                            K_global[dofs[i], dofs[j]] += k_elem[i, j]
+
+                    element_data.append(
+                        {
+                            "nodes": (node_i, node_j),
+                            "dofs": dofs,
+                            "k_local": k_local,
+                            "T": T,
+                            "L": elem_L
+                        }
+                    )
+
+                # ------------------------------------------------------------
+                # Applied external loads
+                # ------------------------------------------------------------
+
+                # Horizontal load at the top-left frame joint
+                F_global[3] += H_load
+
+                # Vertical point load on beam
+                # Convert the point load to equivalent beam nodal loads so that
+                # a load located anywhere along the beam can be analyzed.
+
+                beam_length = L_frame
+                xi = a / beam_length
+
+                N1 = 1.0 - 3.0 * xi**2 + 2.0 * xi**3
+                N2 = beam_length * (xi - 2.0 * xi**2 + xi**3)
+                N3 = 3.0 * xi**2 - 2.0 * xi**3
+                N4 = beam_length * (-xi**2 + xi**3)
+
+                # Downward load is negative global Y.
+                F_global[4] += -P * N1
+                F_global[5] += -P * N2
+                F_global[7] += -P * N3
+                F_global[8] += -P * N4
+
+                # ------------------------------------------------------------
+                # Boundary conditions
+                # Both column bases are fixed
+                # ------------------------------------------------------------
+
+                fixed_dofs = [0, 1, 2, 9, 10, 11]
+
+                free_dofs = [
+                    dof for dof in range(total_dof)
+                    if dof not in fixed_dofs
+                ]
+
+                # ------------------------------------------------------------
+                # Solve frame
+                # ------------------------------------------------------------
+
+                K_ff = K_global[np.ix_(free_dofs, free_dofs)]
+                F_f = F_global[free_dofs]
+
+                D = np.zeros(total_dof)
+
+                try:
+                    D[free_dofs] = np.linalg.solve(K_ff, F_f)
+
+                except np.linalg.LinAlgError:
+                    st.error(
+                        "The frame analysis could not be solved. "
+                        "Check the frame geometry and member properties."
+                    )
+                    st.stop()
+
+                # ------------------------------------------------------------
+                # Support reactions
+                # ------------------------------------------------------------
+
+                R = K_global @ D - F_global
+
+                Ax = R[0]
+                Ay = R[1]
+                MA = R[2] / 12.0
+
+                Bx = R[9]
+                By = R[10]
+                MB = R[11] / 12.0
+
+                # ------------------------------------------------------------
+                # Display support reactions
+                # ------------------------------------------------------------
 
                 st.success("Frame analysis completed.")
 
-                st.subheader("Initial Frame Analysis Results")
+                st.subheader("5. Support Reactions")
 
-                result_col1, result_col2 = st.columns(2)
+                reaction_col1, reaction_col2 = st.columns(2)
 
-                with result_col1:
+                with reaction_col1:
+
+                    st.markdown("#### Left Support A")
+
                     st.metric(
-                        "Beam Left Fixed-End Moment",
-                        f"{FEM_left_ft:.2f} kip-ft"
+                        "Horizontal Reaction, Ax",
+                        f"{Ax:.2f} kip"
                     )
 
-                with result_col2:
                     st.metric(
-                        "Beam Right Fixed-End Moment",
-                        f"{FEM_right_ft:.2f} kip-ft"
+                        "Vertical Reaction, Ay",
+                        f"{Ay:.2f} kip"
                     )
 
+                    st.metric(
+                        "Moment Reaction, MA",
+                        f"{MA:.2f} kip-ft"
+                    )
+
+                with reaction_col2:
+
+                    st.markdown("#### Right Support B")
+
+                    st.metric(
+                        "Horizontal Reaction, Bx",
+                        f"{Bx:.2f} kip"
+                    )
+
+                    st.metric(
+                        "Vertical Reaction, By",
+                        f"{By:.2f} kip"
+                    )
+
+                    st.metric(
+                        "Moment Reaction, MB",
+                        f"{MB:.2f} kip-ft"
+                    )
+
+                # ------------------------------------------------------------
+                # Equilibrium check
+                # ------------------------------------------------------------
+
+                horizontal_check = Ax + Bx + H_load
+                vertical_check = Ay + By - P
+
+                moment_check = (
+                    MA
+                    + MB
+                    + By * frame_width
+                    - P * vertical_load_location
+                    - H_load * frame_height
+                )
+
+                st.subheader("Reaction Equilibrium Check")
+
+                check_col1, check_col2, check_col3 = st.columns(3)
+
+                with check_col1:
+                    st.metric(
+                        "ΣFx",
+                        f"{horizontal_check:.4f} kip"
+                    )
+
+                with check_col2:
+                    st.metric(
+                        "ΣFy",
+                        f"{vertical_check:.4f} kip"
+                    )
+
+                with check_col3:
+                    st.metric(
+                        "ΣM about A",
+                        f"{moment_check:.4f} kip-ft"
+                    )
+
+                # ------------------------------------------------------------
+                # MEMBER INTERNAL END FORCES
+                # ------------------------------------------------------------
+
+                member_forces = []
+
+                for element_index, data in enumerate(element_data):
+
+                    dofs = data["dofs"]
+                    k_local = data["k_local"]
+                    T = data["T"]
+
+                    # Global displacement vector for this member
+                    d_global_element = D[dofs]
+
+                    # Convert member displacements to local coordinates
+                    d_local_element = T @ d_global_element
+
+                    # Local member-end force vector
+                    f_local = k_local @ d_local_element
+
+                    # --------------------------------------------------------
+                    # Beam equivalent nodal load correction
+                    # --------------------------------------------------------
+
+                    if element_index == 1:
+
+                        beam_equiv_local = np.array([
+                            0.0,
+                            -P * N1,
+                            -P * N2,
+                            0.0,
+                            -P * N3,
+                            -P * N4
+                        ])
+
+                        f_local = f_local - beam_equiv_local
+
+                    member_forces.append(f_local)
+
+                # ------------------------------------------------------------
+                # Extract member forces
+                #
+                # Local force-vector order:
+                # [Ni, Vi, Mi, Nj, Vj, Mj]
+                #
+                # Axial/shear = kip
+                # Moment = kip-in
+                # ------------------------------------------------------------
+
+                left_column_forces = member_forces[0]
+                beam_forces = member_forces[1]
+                right_column_forces = member_forces[2]
+
+                # ------------------------------------------------------------
+                # Display internal member-end forces
+                # ------------------------------------------------------------
+
+                st.subheader("6. Internal Member Forces")
+
+                st.write(
+                    "Member-end forces are shown in each member's local "
+                    "coordinate system."
+                )
+
+                # LEFT COLUMN
+                st.markdown("### Left Column")
+
+                lc_col1, lc_col2 = st.columns(2)
+
+                with lc_col1:
+                    st.markdown("**Base End**")
+                    st.write(f"Axial Force: {left_column_forces[0]:.2f} kip")
+                    st.write(f"Shear Force: {left_column_forces[1]:.2f} kip")
+                    st.write(
+                        f"Bending Moment: "
+                        f"{left_column_forces[2] / 12.0:.2f} kip-ft"
+                    )
+
+                with lc_col2:
+                    st.markdown("**Top End**")
+                    st.write(f"Axial Force: {left_column_forces[3]:.2f} kip")
+                    st.write(f"Shear Force: {left_column_forces[4]:.2f} kip")
+                    st.write(
+                        f"Bending Moment: "
+                        f"{left_column_forces[5] / 12.0:.2f} kip-ft"
+                    )
+
+                # BEAM
+                st.markdown("### Beam")
+
+                beam_col1, beam_col2 = st.columns(2)
+
+                with beam_col1:
+                    st.markdown("**Left End**")
+                    st.write(f"Axial Force: {beam_forces[0]:.2f} kip")
+                    st.write(f"Shear Force: {beam_forces[1]:.2f} kip")
+                    st.write(
+                        f"Bending Moment: "
+                        f"{beam_forces[2] / 12.0:.2f} kip-ft"
+                    )
+
+                with beam_col2:
+                    st.markdown("**Right End**")
+                    st.write(f"Axial Force: {beam_forces[3]:.2f} kip")
+                    st.write(f"Shear Force: {beam_forces[4]:.2f} kip")
+                    st.write(
+                        f"Bending Moment: "
+                        f"{beam_forces[5] / 12.0:.2f} kip-ft"
+                    )
+
+                # RIGHT COLUMN
+                st.markdown("### Right Column")
+
+                rc_col1, rc_col2 = st.columns(2)
+
+                with rc_col1:
+                    st.markdown("**Top End**")
+                    st.write(f"Axial Force: {right_column_forces[0]:.2f} kip")
+                    st.write(f"Shear Force: {right_column_forces[1]:.2f} kip")
+                    st.write(
+                        f"Bending Moment: "
+                        f"{right_column_forces[2] / 12.0:.2f} kip-ft"
+                    )
+
+                with rc_col2:
+                    st.markdown("**Base End**")
+                    st.write(f"Axial Force: {right_column_forces[3]:.2f} kip")
+                    st.write(f"Shear Force: {right_column_forces[4]:.2f} kip")
+                    st.write(
+                        f"Bending Moment: "
+                        f"{right_column_forces[5] / 12.0:.2f} kip-ft"
+                    )    
+
+                # ------------------------------------------------------------
+                # 7. NORMAL FORCE DIAGRAM
+                # ------------------------------------------------------------
+
+                st.subheader("7. Normal Force Diagram (NFD)")
+
+                st.write(
+                    "Axial-force distribution throughout the frame. "
+                    "Compression is shown as negative and tension as positive."
+                )
+
+                # ------------------------------------------------------------
+                # Axial forces for diagram
+                # Convention:
+                #   Positive = tension
+                #   Negative = compression
+                # ------------------------------------------------------------
+
+                N_left_column = -abs(Ay)
+                N_beam = -abs(Bx)
+                N_right_column = -abs(By)
+
+                # ------------------------------------------------------------
+                # Plot NFD
+                # ------------------------------------------------------------
+
+                # ------------------------------------------------------------
+                # Proper Normal Force Diagram
+                # ------------------------------------------------------------
+
+                fig_nfd, ax_nfd = plt.subplots(figsize=(6, 3.5))
+
+                x_left = 0.0
+                x_right = frame_width
+                y_base = 0.0
+                y_top = frame_height
+
+                # Diagram offset scale
+                offset_scale = 0.10
+
+                # Convert axial-force magnitudes to graphical offsets
+                max_N = max(
+                    abs(N_left_column),
+                    abs(N_beam),
+                    abs(N_right_column),
+                    1.0
+                )
+
+                column_offset_left = (
+                    abs(N_left_column) / max_N
+                ) * frame_width * offset_scale
+
+                column_offset_right = (
+                    abs(N_right_column) / max_N
+                ) * frame_width * offset_scale
+
+                beam_offset = (
+                    abs(N_beam) / max_N
+                ) * frame_height * offset_scale
+
+
+                # ------------------------------------------------------------
+                # Draw member centerlines
+                # ------------------------------------------------------------
+
+                ax_nfd.plot(
+                    [x_left, x_left],
+                    [y_base, y_top],
+                    "k-",
+                    linewidth=1.5
+                )
+
+                ax_nfd.plot(
+                    [x_left, x_right],
+                    [y_top, y_top],
+                    "k-",
+                    linewidth=1.5
+                )
+
+                ax_nfd.plot(
+                    [x_right, x_right],
+                    [y_top, y_base],
+                    "k-",
+                    linewidth=1.5
+                )
+
+
+                # ------------------------------------------------------------
+                # Left-column NFD
+                # ------------------------------------------------------------
+
+                x_diagram_left = x_left - column_offset_left
+
+                ax_nfd.plot(
+                    [x_diagram_left, x_diagram_left],
+                    [y_base, y_top],
+                    linewidth=3
+                )
+
+                ax_nfd.plot(
+                    [x_left, x_diagram_left],
+                    [y_base, y_base],
+                    linewidth=1
+                )
+
+                ax_nfd.plot(
+                    [x_left, x_diagram_left],
+                    [y_top, y_top],
+                    linewidth=1
+                )
+
+                ax_nfd.fill_betweenx(
+                    [y_base, y_top],
+                    x_left,
+                    x_diagram_left,
+                    alpha=0.20
+                )
+
+                ax_nfd.text(
+                    x_diagram_left - frame_width * 0.025,
+                    frame_height / 2,
+                    f"{N_left_column:.2f} kip",
+                    ha="right",
+                    va="center",
+                    rotation=90
+                )
+
+
+                # ------------------------------------------------------------
+                # Beam NFD
+                # ------------------------------------------------------------
+
+                y_diagram_beam = y_top + beam_offset
+
+                ax_nfd.plot(
+                    [x_left, x_right],
+                    [y_diagram_beam, y_diagram_beam],
+                    linewidth=3
+                )
+
+                ax_nfd.plot(
+                    [x_left, x_left],
+                    [y_top, y_diagram_beam],
+                    linewidth=1
+                )
+
+                ax_nfd.plot(
+                    [x_right, x_right],
+                    [y_top, y_diagram_beam],
+                    linewidth=1
+                )
+
+                ax_nfd.fill_between(
+                    [x_left, x_right],
+                    y_top,
+                    y_diagram_beam,
+                    alpha=0.20
+                )
+
+                ax_nfd.text(
+                    frame_width / 2,
+                    y_diagram_beam + frame_height * 0.04,
+                    f"{N_beam:.2f} kip",
+                    ha="center",
+                    va="bottom"
+                )
+
+
+                # ------------------------------------------------------------
+                # Right-column NFD
+                # ------------------------------------------------------------
+
+                x_diagram_right = x_right + column_offset_right
+
+                ax_nfd.plot(
+                    [x_diagram_right, x_diagram_right],
+                    [y_base, y_top],
+                    linewidth=3
+                )
+
+                ax_nfd.plot(
+                    [x_right, x_diagram_right],
+                    [y_base, y_base],
+                    linewidth=1
+                )
+
+                ax_nfd.plot(
+                    [x_right, x_diagram_right],
+                    [y_top, y_top],
+                    linewidth=1
+                )
+
+                ax_nfd.fill_betweenx(
+                    [y_base, y_top],
+                    x_right,
+                    x_diagram_right,
+                    alpha=0.20
+                )
+
+                ax_nfd.text(
+                    x_diagram_right + frame_width * 0.025,
+                    frame_height / 2,
+                    f"{N_right_column:.2f} kip",
+                    ha="left",
+                    va="center",
+                    rotation=90
+                )
+
+
+                # ------------------------------------------------------------
+                # Formatting
+                # ------------------------------------------------------------
+
+                ax_nfd.set_title("Normal Force Diagram (NFD)")
+                ax_nfd.set_xlabel("Horizontal Position (ft)")
+                ax_nfd.set_ylabel("Elevation (ft)")
+
+                ax_nfd.set_xlim(
+                    -0.25 * frame_width,
+                    1.25 * frame_width
+                )
+
+                ax_nfd.set_ylim(
+                    -0.15 * frame_height,
+                    1.35 * frame_height
+                )
+
+                ax_nfd.set_aspect("equal", adjustable="box")
+                ax_nfd.grid(True, alpha=0.20)
+
+                st.pyplot(fig_nfd, width="content")
+
+                st.caption(
+                    "Sign convention: positive axial force = tension; "
+                    "negative axial force = compression."
+                )
+
+                # ------------------------------------------------------------
+                # 8. SHEAR FORCE DIAGRAM
+                # ------------------------------------------------------------
+
+                st.subheader("8. Shear Force Diagram (SFD)")
+
+                st.write(
+                    "Shear-force distribution throughout the frame."
+                )
+
+                # ------------------------------------------------------------
+                # Shear forces
+                # ------------------------------------------------------------
+
+                V_left_column = -Ax
+                V_right_column = -Bx
+
+                V_beam_left = Ay
+                V_beam_right = Ay - P
+
+                # Point-load position in feet
+                load_x = vertical_load_location
+
+
+                # ------------------------------------------------------------
+                # Plot SFD
+                # ------------------------------------------------------------
+
+                fig_sfd, ax_sfd = plt.subplots(figsize=(6, 3.5))
+
+                x_left = 0.0
+                x_right = frame_width
+                y_base = 0.0
+                y_top = frame_height
+
+                max_V = max(
+                    abs(V_left_column),
+                    abs(V_right_column),
+                    abs(V_beam_left),
+                    abs(V_beam_right),
+                    1.0
+                )
+
+                offset_scale = 0.10
+
+
+                # ------------------------------------------------------------
+                # Draw frame centerlines
+                # ------------------------------------------------------------
+
+                ax_sfd.plot(
+                    [x_left, x_left],
+                    [y_base, y_top],
+                    "k-",
+                    linewidth=1.5
+                )
+
+                ax_sfd.plot(
+                    [x_left, x_right],
+                    [y_top, y_top],
+                    "k-",
+                    linewidth=1.5
+                )
+
+                ax_sfd.plot(
+                    [x_right, x_right],
+                    [y_top, y_base],
+                    "k-",
+                    linewidth=1.5
+                )
+
+
+                # ------------------------------------------------------------
+                # Left-column shear
+                # ------------------------------------------------------------
+
+                left_offset = (
+                    V_left_column / max_V
+                ) * frame_width * offset_scale
+
+                x_left_sfd = x_left + left_offset
+
+                ax_sfd.plot(
+                    [x_left_sfd, x_left_sfd],
+                    [y_base, y_top],
+                    linewidth=2.5
+                )
+
+                ax_sfd.fill_betweenx(
+                    [y_base, y_top],
+                    x_left,
+                    x_left_sfd,
+                    alpha=0.20
+                )
+
+                ax_sfd.plot(
+                    [x_left, x_left_sfd],
+                    [y_base, y_base],
+                    linewidth=1
+                )
+
+                ax_sfd.plot(
+                    [x_left, x_left_sfd],
+                    [y_top, y_top],
+                    linewidth=1
+                )
+
+                ax_sfd.text(
+                    x_left_sfd - frame_width * 0.02,
+                    frame_height / 2,
+                    f"{V_left_column:.2f} kip",
+                    ha="right",
+                    va="center",
+                    rotation=90
+                )
+
+
+                # ------------------------------------------------------------
+                # Beam shear - left of point load
+                # ------------------------------------------------------------
+
+                beam_left_offset = (
+                    V_beam_left / max_V
+                ) * frame_height * offset_scale
+
+                y_beam_left = y_top + beam_left_offset
+
+                ax_sfd.plot(
+                    [x_left, load_x],
+                    [y_beam_left, y_beam_left],
+                    linewidth=2.5
+                )
+
+                ax_sfd.fill_between(
+                    [x_left, load_x],
+                    y_top,
+                    y_beam_left,
+                    alpha=0.20
+                )
+
+
+                # ------------------------------------------------------------
+                # Beam shear - right of point load
+                # ------------------------------------------------------------
+
+                beam_right_offset = (
+                    V_beam_right / max_V
+                ) * frame_height * offset_scale
+
+                y_beam_right = y_top + beam_right_offset
+
+                ax_sfd.plot(
+                    [load_x, x_right],
+                    [y_beam_right, y_beam_right],
+                    linewidth=2.5
+                )
+
+                ax_sfd.fill_between(
+                    [load_x, x_right],
+                    y_top,
+                    y_beam_right,
+                    alpha=0.20
+                )
+
+
+                # ------------------------------------------------------------
+                # Shear jump at point load
+                # ------------------------------------------------------------
+
+                ax_sfd.plot(
+                    [load_x, load_x],
+                    [y_beam_left, y_beam_right],
+                    linewidth=2.5
+                )
+
+
+                # Beam shear labels
+
+                ax_sfd.text(
+                    load_x / 2,
+                    y_beam_left + frame_height * 0.04,
+                    f"{V_beam_left:.2f} kip",
+                    ha="center",
+                    va="bottom"
+                )
+
+                ax_sfd.text(
+                    (load_x + x_right) / 2,
+                    y_beam_right - frame_height * 0.04,
+                    f"{V_beam_right:.2f} kip",
+                    ha="center",
+                    va="top"
+                )
+
+
+                # ------------------------------------------------------------
+                # Right-column shear
+                # ------------------------------------------------------------
+
+                right_offset = (
+                    V_right_column / max_V
+                ) * frame_width * offset_scale
+
+                x_right_sfd = x_right + right_offset
+
+                ax_sfd.plot(
+                    [x_right_sfd, x_right_sfd],
+                    [y_base, y_top],
+                    linewidth=2.5
+                )
+
+                ax_sfd.fill_betweenx(
+                    [y_base, y_top],
+                    x_right,
+                    x_right_sfd,
+                    alpha=0.20
+                )
+
+                ax_sfd.plot(
+                    [x_right, x_right_sfd],
+                    [y_base, y_base],
+                    linewidth=1
+                )
+
+                ax_sfd.plot(
+                    [x_right, x_right_sfd],
+                    [y_top, y_top],
+                    linewidth=1
+                )
+
+                ax_sfd.text(
+                    x_right_sfd + frame_width * 0.02,
+                    frame_height / 2,
+                    f"{V_right_column:.2f} kip",
+                    ha="left",
+                    va="center",
+                    rotation=90
+                )
+
+
+                # ------------------------------------------------------------
+                # Formatting
+                # ------------------------------------------------------------
+
+                ax_sfd.set_title("Shear Force Diagram (SFD)")
+                ax_sfd.set_xlabel("Horizontal Position (ft)")
+                ax_sfd.set_ylabel("Elevation (ft)")
+
+                ax_sfd.set_xlim(
+                    -0.20 * frame_width,
+                    1.20 * frame_width
+                )
+
+                ax_sfd.set_ylim(
+                    -0.15 * frame_height,
+                    1.25 * frame_height
+                )
+
+                ax_sfd.set_aspect("equal", adjustable="box")
+                ax_sfd.grid(True, alpha=0.20)
+
+                st.pyplot(fig_sfd, width="content")
+
+                st.caption(
+                    "The vertical jump in the beam SFD occurs at the applied point load."
+                )
+
+                # ------------------------------------------------------------
+                # 9. BENDING MOMENT DIAGRAM
+                # ------------------------------------------------------------
+
+                st.subheader("9. Bending Moment Diagram (BMD)")
+
+                st.write(
+                    "Bending-moment distribution throughout the frame."
+                )
+
+                # ------------------------------------------------------------
+                # Member-end moments in kip-ft
+                # Local force-vector order:
+                # [Ni, Vi, Mi, Nj, Vj, Mj]
+                # ------------------------------------------------------------
+
+                M_lc_base = left_column_forces[2] / 12.0
+                M_lc_top = left_column_forces[5] / 12.0
+
+                M_beam_left = beam_forces[2] / 12.0
+                M_beam_right = beam_forces[5] / 12.0
+
+                M_rc_top = right_column_forces[2] / 12.0
+                M_rc_base = right_column_forces[5] / 12.0
+
+                # ------------------------------------------------------------
+                # Plot BMD
+                # ------------------------------------------------------------
+
+                fig_bmd, ax_bmd = plt.subplots(figsize=(6, 3.5))
+
+                x_left = 0.0
+                x_right = frame_width
+                y_base = 0.0
+                y_top = frame_height
+
+                # Undeformed frame
+                ax_bmd.plot(
+                    [x_left, x_left],
+                    [y_base, y_top],
+                    "k-",
+                    linewidth=1.5
+                )
+
+                ax_bmd.plot(
+                    [x_left, x_right],
+                    [y_top, y_top],
+                    "k-",
+                    linewidth=1.5
+                )
+
+                ax_bmd.plot(
+                    [x_right, x_right],
+                    [y_top, y_base],
+                    "k-",
+                    linewidth=1.5
+                )
+
+                # ------------------------------------------------------------
+                # Scale moment offsets automatically
+                # ------------------------------------------------------------
+
+                max_M = max(
+                    abs(M_lc_base),
+                    abs(M_lc_top),
+                    abs(M_beam_left),
+                    abs(M_beam_right),
+                    abs(M_rc_top),
+                    abs(M_rc_base),
+                    1.0
+                )
+
+                offset_scale = (
+                    0.12 * min(frame_width, frame_height) / max_M
+                )
+
+                # ------------------------------------------------------------
+                # Left column BMD
+                # ------------------------------------------------------------
+
+                lc_x_base = x_left + M_lc_base * offset_scale
+                lc_x_top = x_left + M_lc_top * offset_scale
+
+                ax_bmd.plot(
+                    [lc_x_base, lc_x_top],
+                    [y_base, y_top],
+                    linewidth=2.5
+                )
+
+                ax_bmd.fill(
+                    [x_left, lc_x_base, lc_x_top, x_left],
+                    [y_base, y_base, y_top, y_top],
+                    alpha=0.20
+                )
+
+                # ------------------------------------------------------------
+                # Beam BMD
+                #
+                # Point load causes a change in slope at its location.
+                # ------------------------------------------------------------
+
+                load_x = vertical_load_location
+
+                # Beam local end forces
+                V_beam_left = beam_forces[1]
+                V_beam_right = beam_forces[4]
+
+                # For plotting the physical BMD, reverse the local i-end
+                # moment sign so both ends use one continuous beam convention.
+                M_plot_left = -beam_forces[2] / 12.0
+                M_plot_right = beam_forces[5] / 12.0
+
+                # No distributed load is present, so moment varies linearly
+                # between concentrated-force locations.
+                M_at_load = M_plot_left + V_beam_left * load_x
+
+                beam_y_left = y_top + M_plot_left * offset_scale
+                beam_y_load = y_top + M_at_load * offset_scale
+                beam_y_right = y_top + M_plot_right * offset_scale
+
+                ax_bmd.plot(
+                    [x_left, load_x, x_right],
+                    [beam_y_left, beam_y_load, beam_y_right],
+                    linewidth=2.5
+                )
+
+                ax_bmd.fill(
+                    [x_left, load_x, x_right, x_right, x_left],
+                    [y_top, y_top, y_top, beam_y_right, beam_y_left],
+                    alpha=0.20
+                )
+
+                # ------------------------------------------------------------
+                # Right column BMD
+                # ------------------------------------------------------------
+
+                rc_x_top = x_right + M_rc_top * offset_scale
+                rc_x_base = x_right + M_rc_base * offset_scale
+
+                ax_bmd.plot(
+                    [rc_x_top, rc_x_base],
+                    [y_top, y_base],
+                    linewidth=2.5
+                )
+
+                ax_bmd.fill(
+                    [x_right, rc_x_top, rc_x_base, x_right],
+                    [y_top, y_top, y_base, y_base],
+                    alpha=0.20
+                )
+
+                # ------------------------------------------------------------
+                # Moment labels
+                # ------------------------------------------------------------
+
+                # Left column base
+                ax_bmd.text(
+                    lc_x_base,
+                    y_base,
+                    f"{M_lc_base:.2f}",
+                    fontsize=8,
+                    va="bottom"
+                )
+
+                # Left beam-column joint
+                # Display only the beam-side physical BMD value to avoid
+                # duplicate member-end labels at the rigid joint.
+                ax_bmd.text(
+                    x_left,
+                    beam_y_left,
+                    f"{M_plot_left:.2f}",
+                    fontsize=8,
+                    ha="left",
+                    va="bottom"
+                )
+
+                # Beam moment at point load
+                # Only label this location when a vertical point load is actually present.
+                if abs(vertical_load) > 1e-9:
+                    ax_bmd.text(
+                        load_x,
+                        beam_y_load,
+                        f"{M_at_load:.2f}",
+                        fontsize=8,
+                        ha="center",
+                        va="bottom"
+                    )
+
+                # Right beam-column joint
+                ax_bmd.text(
+                    x_right,
+                    beam_y_right,
+                    f"{M_plot_right:.2f}",
+                    fontsize=8,
+                    ha="left",
+                    va="bottom"
+                )
+
+                # Right column base
+                ax_bmd.text(
+                    rc_x_base,
+                    y_base,
+                    f"{M_rc_base:.2f}",
+                    fontsize=8,
+                    ha="left",
+                    va="bottom"
+                )
+                # ------------------------------------------------------------
+                # Plot formatting
+                # ------------------------------------------------------------
+
+                ax_bmd.set_title("Bending Moment Diagram (BMD)")
+                ax_bmd.set_xlabel("Horizontal Position (ft)")
+                ax_bmd.set_ylabel("Elevation (ft)")
+
+                ax_bmd.grid(True, alpha=0.25)
+
+                ax_bmd.set_aspect("equal", adjustable="datalim")
+
+                plt.tight_layout()
+
+                st.pyplot(
+                    fig_bmd,
+                    use_container_width=False
+                )
+
+                plt.close(fig_bmd)
+
+                st.caption(
+                    "Bending moments are shown in kip-ft."
+                )
 
     # ============================================================
     # BEAM ANALYSIS
