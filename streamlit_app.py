@@ -364,23 +364,217 @@ if analysis_module == "Column Analysis":
                     f"{base_moment:.2f} kip-ft"
                 )
 
-            st.markdown("### Equilibrium Calculations")
+            # ============================================================
+            # HAND CALCULATIONS
+            # ============================================================
 
-            st.write("Axial force equilibrium:")
-            st.latex(
-                rf"R_y = \sum P_y = {axial_reaction:.2f}\ \text{{kip}}"
+            st.markdown("### Hand Calculations")
+
+            st.write(
+                "The following calculations show the static-equilibrium "
+                "equations used to determine the column reactions."
             )
 
-            st.write("Horizontal force equilibrium:")
-            st.latex(
-                rf"R_x = \sum P_x = {horizontal_reaction:.2f}\ \text{{kip}}"
+            # ------------------------------------------------------------
+            # 1. Axial reaction
+            # ------------------------------------------------------------
+
+            st.markdown("#### 1. Axial Reaction")
+
+            st.latex(r"\sum F_y = 0")
+
+            if axial_loads:
+
+                axial_symbols = " + ".join(
+                    [f"P_{{{i + 1}}}" for i in range(len(axial_loads))]
+                )
+
+                axial_values = " + ".join(
+                    [f"{P:.2f}" for P, load_y in axial_loads]
+                )
+
+                st.latex(
+                    rf"R_y = {axial_symbols}"
+                )
+
+                st.latex(
+                    rf"R_y = {axial_values}"
+                )
+
+                st.latex(
+                    rf"\boxed{{R_y = {axial_reaction:.2f}\ \text{{kip}}}}"
+                )
+
+            else:
+
+                st.latex(
+                    r"\boxed{R_y = 0.00\ \text{kip}}"
+                )
+
+            # ------------------------------------------------------------
+            # 2. Horizontal reaction
+            # ------------------------------------------------------------
+
+            st.markdown("#### 2. Horizontal Reaction")
+
+            st.latex(r"\sum F_x = 0")
+
+            if horizontal_loads:
+
+                horizontal_symbols = " + ".join(
+                    [f"H_{{{i + 1}}}" for i in range(len(horizontal_loads))]
+                )
+
+                horizontal_values = " + ".join(
+                    [f"{H:.2f}" for H, load_y in horizontal_loads]
+                )
+
+                st.latex(
+                    rf"R_x = {horizontal_symbols}"
+                )
+
+                st.latex(
+                    rf"R_x = {horizontal_values}"
+                )
+
+                st.latex(
+                    rf"\boxed{{R_x = {horizontal_reaction:.2f}\ \text{{kip}}}}"
+                )
+
+            else:
+
+                st.latex(
+                    r"\boxed{R_x = 0.00\ \text{kip}}"
+                )
+
+            # ------------------------------------------------------------
+            # 3. Base moment
+            # ------------------------------------------------------------
+
+            st.markdown("#### 3. Base Moment")
+
+            st.latex(r"\sum M_{\mathrm{base}} = 0")
+
+            if horizontal_loads:
+
+                moment_symbols = " + ".join(
+                    [
+                        f"H_{{{i + 1}}}y_{{{i + 1}}}"
+                        for i in range(len(horizontal_loads))
+                    ]
+                )
+
+                moment_values = " + ".join(
+                    [
+                        f"({H:.2f})({load_y:.2f})"
+                        for H, load_y in horizontal_loads
+                    ]
+                )
+
+                st.latex(
+                    rf"M_B = {moment_symbols}"
+                )
+
+                st.latex(
+                    rf"M_B = {moment_values}"
+                )
+
+                st.latex(
+                    rf"\boxed{{M_B = {base_moment:.2f}\ \text{{kip-ft}}}}"
+                )
+
+            else:
+
+                st.latex(
+                    r"\boxed{M_B = 0.00\ \text{kip-ft}}"
+                )
+            
+            # ------------------------------------------------------------
+            # HAND-CALCULATION VERIFICATION
+            # ------------------------------------------------------------
+
+            st.subheader("Hand-Calculation Verification")
+
+            st.write(
+                "Enter independently calculated column reactions below to compare "
+                "your hand calculations with the program results."
             )
 
-            st.write("Moment equilibrium about the base:")
-            st.latex(
-                rf"M_B = \sum(P_x y) = {base_moment:.2f}\ \text{{kip-ft}}"
+            hand_col1, hand_col2, hand_col3 = st.columns(3)
+
+            with hand_col1:
+                hand_axial = st.number_input(
+                    "Hand-Calculated Axial Reaction (kip)",
+                    value=0.0,
+                    step=0.01,
+                    key="column_hand_axial"
+                )
+
+            with hand_col2:
+                hand_horizontal = st.number_input(
+                    "Hand-Calculated Horizontal Reaction (kip)",
+                    value=0.0,
+                    step=0.01,
+                    key="column_hand_horizontal"
+                )
+
+            with hand_col3:
+                hand_moment = st.number_input(
+                    "Hand-Calculated Base Moment (kip-ft)",
+                    value=0.0,
+                    step=0.01,
+                    key="column_hand_moment"
+                )
+
+            compare_column = st.button(
+                "COMPARE COLUMN HAND CALCULATION",
+                key="compare_column_hand"
             )
 
+            if compare_column:
+
+                axial_difference = hand_axial - axial_reaction
+                horizontal_difference = hand_horizontal - horizontal_reaction
+                moment_difference = hand_moment - base_moment
+
+                st.markdown("### Comparison Results")
+
+                st.write(
+                    f"**Axial Reaction:** Tool = {axial_reaction:.2f} kip | "
+                    f"Hand = {hand_axial:.2f} kip | "
+                    f"Difference = {axial_difference:.4f} kip"
+                )
+
+                st.write(
+                    f"**Horizontal Reaction:** Tool = {horizontal_reaction:.2f} kip | "
+                    f"Hand = {hand_horizontal:.2f} kip | "
+                    f"Difference = {horizontal_difference:.4f} kip"
+                )
+
+                st.write(
+                    f"**Base Moment:** Tool = {base_moment:.2f} kip-ft | "
+                    f"Hand = {hand_moment:.2f} kip-ft | "
+                    f"Difference = {moment_difference:.4f} kip-ft"
+                )
+
+                tolerance = 0.01
+
+                if (
+                    abs(axial_difference) <= tolerance
+                    and abs(horizontal_difference) <= tolerance
+                    and abs(moment_difference) <= tolerance
+                ):
+                    st.success(
+                        "Hand calculations agree with the program results."
+                    )
+                else:
+                    st.warning(
+                        "Hand calculations and program results differ. "
+                        "Review the calculations."
+                    )
+
+           
+           
             # ========================================================
             # COLUMN FORCE DIAGRAMS
             # ========================================================
@@ -538,6 +732,8 @@ if analysis_module == "Column Analysis":
 
             st.pyplot(fig, width=850)
             plt.close(fig)
+
+
 
     # ============================================================
     # FRAME ANALYSIS
@@ -1141,6 +1337,276 @@ if analysis_module == "Frame Analysis":
                         "ΣM about A",
                         f"{moment_check:.4f} kip-ft"
                     )
+
+                # ============================================================
+                # FRAME HAND CALCULATIONS
+                # ============================================================
+
+                st.subheader("Hand Calculations")
+
+                st.write(
+                    "The following calculations show the global static-equilibrium "
+                    "checks for the frame using the calculated support reactions."
+                )
+
+                # ------------------------------------------------------------
+                # 1. Horizontal equilibrium
+                # ------------------------------------------------------------
+
+                st.markdown("### 1. Horizontal Force Equilibrium")
+
+                st.latex(r"\sum F_x = 0")
+
+                st.latex(
+                    rf"A_x + B_x + H = 0"
+                )
+
+                st.latex(
+                    rf"({Ax:.2f}) + ({Bx:.2f}) + ({H_load:.2f}) = "
+                    rf"{horizontal_check:.4f}\ \text{{kip}}"
+                )
+
+                st.latex(
+                    rf"\boxed{{\sum F_x = {horizontal_check:.4f}\ \text{{kip}}}}"
+                )
+
+                # ------------------------------------------------------------
+                # 2. Vertical equilibrium
+                # ------------------------------------------------------------
+
+                st.markdown("### 2. Vertical Force Equilibrium")
+
+                st.latex(r"\sum F_y = 0")
+
+                st.latex(
+                    rf"A_y + B_y - P = 0"
+                )
+
+                st.latex(
+                    rf"({Ay:.2f}) + ({By:.2f}) - ({P:.2f}) = "
+                    rf"{vertical_check:.4f}\ \text{{kip}}"
+                )
+
+                st.latex(
+                    rf"\boxed{{\sum F_y = {vertical_check:.4f}\ \text{{kip}}}}"
+                )
+
+                # ------------------------------------------------------------
+                # 3. Moment equilibrium about A
+                # ------------------------------------------------------------
+
+                st.markdown("### 3. Moment Equilibrium About A")
+
+                st.latex(r"\sum M_A = 0")
+
+                st.latex(
+                    r"M_A + M_B + B_yL - Pa - Hh = 0"
+                )
+
+                st.latex(
+                    rf"({MA:.2f}) + ({MB:.2f})"
+                    rf" + ({By:.2f})({frame_width:.2f})"
+                    rf" - ({P:.2f})({vertical_load_location:.2f})"
+                    rf" - ({H_load:.2f})({frame_height:.2f})"
+                    rf" = {moment_check:.4f}\ \text{{kip-ft}}"
+                )
+
+                st.latex(
+                    rf"\boxed{{\sum M_A = {moment_check:.4f}\ "
+                    rf"\text{{kip-ft}}}}"
+                )
+
+                # ------------------------------------------------------------
+                # 4. Calculated support reactions
+                # ------------------------------------------------------------
+
+                st.markdown("### 4. Calculated Support Reactions")
+
+                left_hand_col, right_hand_col = st.columns(2)
+
+                with left_hand_col:
+
+                    st.markdown("#### Left Support A")
+
+                    st.latex(
+                        rf"A_x = {Ax:.2f}\ \text{{kip}}"
+                    )
+
+                    st.latex(
+                        rf"A_y = {Ay:.2f}\ \text{{kip}}"
+                    )
+
+                    st.latex(
+                        rf"M_A = {MA:.2f}\ \text{{kip-ft}}"
+                    )
+
+                with right_hand_col:
+
+                    st.markdown("#### Right Support B")
+
+                    st.latex(
+                        rf"B_x = {Bx:.2f}\ \text{{kip}}"
+                    )
+
+                    st.latex(
+                        rf"B_y = {By:.2f}\ \text{{kip}}"
+                    )
+
+                    st.latex(
+                        rf"M_B = {MB:.2f}\ \text{{kip-ft}}"
+                    )
+
+                st.info(
+                    "Because this fixed-fixed frame is statically indeterminate, "
+                    "the six support reactions cannot be determined from the three "
+                    "global equilibrium equations alone. The frame analysis determines "
+                    "the reactions, and the equations above verify global equilibrium."
+                )
+
+                # ============================================================
+                # FRAME HAND-CALCULATION VERIFICATION
+                # ============================================================
+
+                st.subheader("Hand-Calculation Verification")
+
+                st.write(
+                    "Enter independently calculated frame reactions below to compare "
+                    "your hand calculations with the program results."
+                )
+
+                verify_A, verify_B = st.columns(2)
+
+                with verify_A:
+
+                    st.markdown("#### Left Support A")
+
+                    hand_Ax = st.number_input(
+                        "Hand-Calculated Ax (kip)",
+                        value=0.0,
+                        step=0.01,
+                        key="frame_hand_Ax"
+                    )
+
+                    hand_Ay = st.number_input(
+                        "Hand-Calculated Ay (kip)",
+                        value=0.0,
+                        step=0.01,
+                        key="frame_hand_Ay"
+                    )
+
+                    hand_MA = st.number_input(
+                        "Hand-Calculated MA (kip-ft)",
+                        value=0.0,
+                        step=0.01,
+                        key="frame_hand_MA"
+                    )
+
+                with verify_B:
+
+                    st.markdown("#### Right Support B")
+
+                    hand_Bx = st.number_input(
+                        "Hand-Calculated Bx (kip)",
+                        value=0.0,
+                        step=0.01,
+                        key="frame_hand_Bx"
+                    )
+
+                    hand_By = st.number_input(
+                        "Hand-Calculated By (kip)",
+                        value=0.0,
+                        step=0.01,
+                        key="frame_hand_By"
+                    )
+
+                    hand_MB = st.number_input(
+                        "Hand-Calculated MB (kip-ft)",
+                        value=0.0,
+                        step=0.01,
+                        key="frame_hand_MB"
+                    )
+
+                compare_frame = st.button(
+                    "COMPARE FRAME HAND CALCULATION",
+                    key="compare_frame_hand"
+                )
+
+                if compare_frame:
+
+                    diff_Ax = hand_Ax - Ax
+                    diff_Ay = hand_Ay - Ay
+                    diff_MA = hand_MA - MA
+
+                    diff_Bx = hand_Bx - Bx
+                    diff_By = hand_By - By
+                    diff_MB = hand_MB - MB
+
+                    st.markdown("### Comparison Results")
+
+                    result_A, result_B = st.columns(2)
+
+                    with result_A:
+
+                        st.markdown("#### Left Support A")
+
+                        st.write(
+                            f"**Ax:** Tool = {Ax:.2f} kip | "
+                            f"Hand = {hand_Ax:.2f} kip | "
+                            f"Difference = {diff_Ax:.4f} kip"
+                        )
+
+                        st.write(
+                            f"**Ay:** Tool = {Ay:.2f} kip | "
+                            f"Hand = {hand_Ay:.2f} kip | "
+                            f"Difference = {diff_Ay:.4f} kip"
+                        )
+
+                        st.write(
+                            f"**MA:** Tool = {MA:.2f} kip-ft | "
+                            f"Hand = {hand_MA:.2f} kip-ft | "
+                            f"Difference = {diff_MA:.4f} kip-ft"
+                        )
+
+                    with result_B:
+
+                        st.markdown("#### Right Support B")
+
+                        st.write(
+                            f"**Bx:** Tool = {Bx:.2f} kip | "
+                            f"Hand = {hand_Bx:.2f} kip | "
+                            f"Difference = {diff_Bx:.4f} kip"
+                        )
+
+                        st.write(
+                            f"**By:** Tool = {By:.2f} kip | "
+                            f"Hand = {hand_By:.2f} kip | "
+                            f"Difference = {diff_By:.4f} kip"
+                        )
+
+                        st.write(
+                            f"**MB:** Tool = {MB:.2f} kip-ft | "
+                            f"Hand = {hand_MB:.2f} kip-ft | "
+                            f"Difference = {diff_MB:.4f} kip-ft"
+                        )
+
+                    tolerance = 0.01
+
+                    if (
+                        abs(diff_Ax) <= tolerance
+                        and abs(diff_Ay) <= tolerance
+                        and abs(diff_MA) <= tolerance
+                        and abs(diff_Bx) <= tolerance
+                        and abs(diff_By) <= tolerance
+                        and abs(diff_MB) <= tolerance
+                    ):
+                        st.success(
+                            "Hand calculations agree with the program results."
+                        )
+                    else:
+                        st.warning(
+                            "Hand calculations and program results differ. "
+                            "Review the calculations."
+                        )
 
                 # ------------------------------------------------------------
                 # MEMBER INTERNAL END FORCES
